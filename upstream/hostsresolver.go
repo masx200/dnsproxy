@@ -30,7 +30,11 @@ func NewHostsResolver(hosts hostsfile.Storage) (hr *HostsResolver) {
 // provided by the [hostsfile.DefaultHostsPaths] and read from rootFSys.  In
 // case the file by any default path doesn't exist it adds a log debug record.
 // If l is nil, [slog.Default] is used.
-func NewDefaultHostsResolver(rootFSys fs.FS, l *slog.Logger) (hr *HostsResolver, err error) {
+func NewDefaultHostsResolver(
+	ctx context.Context,
+	rootFSys fs.FS,
+	l *slog.Logger,
+) (hr *HostsResolver, err error) {
 	if l == nil {
 		l = slog.Default()
 	}
@@ -41,9 +45,9 @@ func NewDefaultHostsResolver(rootFSys fs.FS, l *slog.Logger) (hr *HostsResolver,
 	}
 
 	// The error is always nil here since no readers passed.
-	strg, _ := hostsfile.NewDefaultStorage()
+	strg, _ := hostsfile.NewDefaultStorage(ctx, &hostsfile.DefaultStorageConfig{})
 	for _, filename := range paths {
-		err = parseHostsFile(rootFSys, strg, filename, l)
+		err = parseHostsFile(ctx, rootFSys, strg, filename, l)
 		if err != nil {
 			// Don't wrap the error since it's already informative enough as is.
 			return nil, err
@@ -54,7 +58,13 @@ func NewDefaultHostsResolver(rootFSys fs.FS, l *slog.Logger) (hr *HostsResolver,
 }
 
 // parseHostsFile reads a single hosts file from fsys and parses it into hosts.
-func parseHostsFile(fsys fs.FS, hosts hostsfile.Set, filename string, l *slog.Logger) (err error) {
+func parseHostsFile(
+	ctx context.Context,
+	fsys fs.FS,
+	hosts hostsfile.Set,
+	filename string,
+	l *slog.Logger,
+) (err error) {
 	f, err := fsys.Open(filename)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -69,7 +79,7 @@ func parseHostsFile(fsys fs.FS, hosts hostsfile.Set, filename string, l *slog.Lo
 
 	defer func() { err = errors.WithDeferred(err, f.Close()) }()
 
-	return hostsfile.Parse(hosts, f, nil)
+	return hostsfile.Parse(ctx, hosts, f, nil)
 }
 
 // type check

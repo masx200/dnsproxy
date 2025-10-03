@@ -35,7 +35,7 @@ func TestHostsResolver_LookupNetIP(t *testing.T) {
 		},
 	}
 
-	hr, err := upstream.NewDefaultHostsResolver(fsys, slogutil.NewDiscardLogger())
+	hr, err := upstream.NewDefaultHostsResolver(t.Context(), fsys, slogutil.NewDiscardLogger())
 	require.NoError(t, err)
 
 	testCases := []struct {
