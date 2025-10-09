@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/proxyutil"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/masx200/dnsproxy/proxyutil"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -91,6 +91,9 @@ type dnsOverQUIC struct {
 	// logger is used for exchange logging.  It is never nil.
 	logger *slog.Logger
 
+	// opts contains the upstream options for connection management.
+	opts UpstreamOptions
+
 	// timeout is the timeout for the upstream connection.
 	timeout time.Duration
 }
@@ -105,12 +108,12 @@ func newDoQ(addr *url.URL, opts *Options) (u Upstream, err error) {
 		quicConfig: &quic.Config{
 			KeepAlivePeriod: QUICKeepAlivePeriod,
 			TokenStore:      newQUICTokenStore(),
-			Tracer:          opts.QUICTracer,
+			Tracer:          opts.QUICTracer(),
 		},
 		tlsConf: &tls.Config{
 			ServerName:   addr.Hostname(),
-			RootCAs:      opts.RootCAs,
-			CipherSuites: opts.CipherSuites,
+			RootCAs:      opts.RootCAs(),
+			CipherSuites: opts.CipherSuites(),
 			// Use the default capacity for the LRU cache.  It may be useful to
 			// store several caches since the user may be routed to different
 			// servers in case there's load balancing on the server-side.
@@ -118,16 +121,17 @@ func newDoQ(addr *url.URL, opts *Options) (u Upstream, err error) {
 			MinVersion:         tls.VersionTLS12,
 			// #nosec G402 -- TLS certificate verification could be disabled by
 			// configuration.
-			InsecureSkipVerify:    opts.InsecureSkipVerify,
-			VerifyPeerCertificate: opts.VerifyServerCertificate,
-			VerifyConnection:      opts.VerifyConnection,
+			InsecureSkipVerify:    opts.InsecureSkipVerify(),
+			VerifyPeerCertificate: opts.VerifyServerCertificate(),
+			VerifyConnection:      opts.VerifyConnection(),
 			NextProtos:            compatProtoDQ,
 		},
 		quicConfigMu: &sync.Mutex{},
 		connMu:       &sync.Mutex{},
 		bytesPoolMu:  &sync.Mutex{},
-		logger:       opts.Logger,
-		timeout:      opts.Timeout,
+		logger:       opts.Logger(),
+		opts:         opts,
+		timeout:      opts.Timeout(),
 	}
 
 	runtime.SetFinalizer(u, (*dnsOverQUIC).Close)
@@ -331,7 +335,7 @@ func (p *dnsOverQUIC) openConnection() (conn *quic.Conn, err error) {
 		return nil, fmt.Errorf("bootstrapping %s: %w", p.addr, err)
 	}
 
-	// we're using bootstrapped address instead of what's passed to the function
+	// First, use the bootstrap dialer to get the address
 	// it does not create an actual connection, but it helps us determine
 	// what IP is actually reachable (when there're v4/v6 addresses).
 	rawConn, err := dialContext(context.Background(), "udp", "")
@@ -351,6 +355,16 @@ func (p *dnsOverQUIC) openConnection() (conn *quic.Conn, err error) {
 	}
 
 	addr := udpConn.RemoteAddr().String()
+
+	// Now use UpstreamOptions.DialUDP for the actual UDP connection
+	udpConn2, err := p.opts.DialUDP(context.Background(), addr)
+	if err != nil {
+		return nil, fmt.Errorf("dialing udp connection to %s: %w", p.addr, err)
+	}
+	defer udpConn2.Close()
+
+	// Get the remote address from the UDP connection created by UpstreamOptions
+	addr = udpConn2.RemoteAddr().String()
 
 	ctx, cancel := p.withDeadline(context.Background())
 	defer cancel()
@@ -472,7 +486,7 @@ func isQUICRetryError(err error) (ok bool) {
 		// server when it considers that it's time to close the connection.
 		// For example, Google DNS eventually closes an active connection with
 		// the NO_ERROR code and "Connection max age expired" message:
-		// https://github.com/AdguardTeam/dnsproxy/issues/283
+		// https://github.com/masx200/dnsproxy/issues/283
 		return true
 	}
 

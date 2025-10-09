@@ -3,11 +3,11 @@ package proxy
 import (
 	"testing"
 
-	"github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
+	"github.com/masx200/dnsproxy/upstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -480,7 +480,7 @@ func BenchmarkGetUpstreamsForDomain(b *testing.B) {
 	//
 	//	goos: darwin
 	//	goarch: amd64
-	//	pkg: github.com/AdguardTeam/dnsproxy/proxy
+	//	pkg: github.com/masx200/dnsproxy/proxy
 	//	cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
 	//	BenchmarkGetUpstreamsForDomain/get-12         	22438213	        46.05 ns/op	       0 B/op	       0 allocs/op
 }

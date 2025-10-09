@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/miekg/dns"
@@ -44,6 +43,9 @@ type plainDNS struct {
 	// net is the network of the connections.
 	net network
 
+	// opts contains the upstream options for connection management.
+	opts UpstreamOptions
+
 	// timeout is the timeout for DNS requests.
 	timeout time.Duration
 }
@@ -62,10 +64,11 @@ func newPlain(addr *url.URL, opts *Options) (u *plainDNS, err error) {
 
 	return &plainDNS{
 		addr:      addr,
-		logger:    opts.Logger,
+		logger:    opts.Logger(),
 		getDialer: newDialerInitializer(addr, opts),
 		net:       addr.Scheme,
-		timeout:   opts.Timeout,
+		opts:      opts,
+		timeout:   opts.Timeout(),
 	}, nil
 }
 
@@ -88,7 +91,7 @@ func (p *plainDNS) Address() string {
 // network must be either [networkUDP] or [networkTCP].
 func (p *plainDNS) dialExchange(
 	network network,
-	dial bootstrap.DialHandler,
+	dial DialHandler,
 	req *dns.Msg,
 ) (resp *dns.Msg, err error) {
 	addr := p.Address()
@@ -103,7 +106,22 @@ func (p *plainDNS) dialExchange(
 	defer func() { logFinish(p.logger, addr, network, err) }()
 
 	ctx := context.Background()
-	conn.Conn, err = dial(ctx, network, "")
+
+	// Use UpstreamOptions for the actual connection
+	switch network {
+	case networkTCP:
+		conn.Conn, err = p.opts.DialTCP(ctx, addr)
+	case networkUDP:
+		udpConn, dialErr := p.opts.DialUDP(ctx, addr)
+		if dialErr != nil {
+			return nil, fmt.Errorf("dialing %s over %s: %w", p.addr.Host, network, dialErr)
+		}
+		conn.Conn = udpConn
+	default:
+		// Fallback to the original dial method for other networks
+		conn.Conn, err = dial(ctx, network, "")
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("dialing %s over %s: %w", p.addr.Host, network, err)
 	}
@@ -111,7 +129,21 @@ func (p *plainDNS) dialExchange(
 
 	resp, _, err = client.ExchangeWithConn(req, conn)
 	if isExpectedConnErr(err) {
-		conn.Conn, err = dial(ctx, network, "")
+		// Retry with UpstreamOptions
+		switch network {
+		case networkTCP:
+			conn.Conn, err = p.opts.DialTCP(ctx, addr)
+		case networkUDP:
+			udpConn, dialErr := p.opts.DialUDP(ctx, addr)
+			if dialErr != nil {
+				return nil, fmt.Errorf("dialing %s over %s again: %w", p.addr.Host, network, dialErr)
+			}
+			conn.Conn = udpConn
+		default:
+			// Fallback to the original dial method for other networks
+			conn.Conn, err = dial(ctx, network, "")
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("dialing %s over %s again: %w", p.addr.Host, network, err)
 		}

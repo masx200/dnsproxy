@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/miekg/dns"
@@ -41,6 +40,9 @@ type dnsOverTLS struct {
 	// logger is used for exchange logging.  It is never nil.
 	logger *slog.Logger
 
+	// opts contains the upstream options for connection management.
+	opts UpstreamOptions
+
 	// conns stores the connections ready for reuse.  Don't use [sync.Pool]
 	// here, since there is no need to deallocate these connections.
 	//
@@ -60,8 +62,8 @@ func newDoT(addr *url.URL, opts *Options) (ups Upstream, err error) {
 		getDialer: newDialerInitializer(addr, opts),
 		tlsConf: &tls.Config{
 			ServerName:   addr.Hostname(),
-			RootCAs:      opts.RootCAs,
-			CipherSuites: opts.CipherSuites,
+			RootCAs:      opts.RootCAs(),
+			CipherSuites: opts.CipherSuites(),
 			// Use the default capacity for the LRU cache.  It may be useful to
 			// store several caches since the user may be routed to different
 			// servers in case there's load balancing on the server-side.
@@ -69,12 +71,13 @@ func newDoT(addr *url.URL, opts *Options) (ups Upstream, err error) {
 			MinVersion:         tls.VersionTLS12,
 			// #nosec G402 -- TLS certificate verification could be disabled by
 			// configuration.
-			InsecureSkipVerify:    opts.InsecureSkipVerify,
-			VerifyPeerCertificate: opts.VerifyServerCertificate,
-			VerifyConnection:      opts.VerifyConnection,
+			InsecureSkipVerify:    opts.InsecureSkipVerify(),
+			VerifyPeerCertificate: opts.VerifyServerCertificate(),
+			VerifyConnection:      opts.VerifyConnection(),
 		},
 		connsMu: &sync.Mutex{},
-		logger:  opts.Logger,
+		logger:  opts.Logger(),
+		opts:    opts,
 	}
 
 	runtime.SetFinalizer(tlsUps, (*dnsOverTLS).Close)
@@ -103,14 +106,14 @@ func (p *dnsOverTLS) Exchange(req *dns.Msg) (reply *dns.Msg, err error) {
 	reply, err = p.exchangeWithConn(conn, req)
 	if err != nil {
 		// The pooled connection might have been closed already, see
-		// https://github.com/AdguardTeam/dnsproxy/issues/3.  The following
+		// https://github.com/masx200/dnsproxy/issues/3.  The following
 		// connection from pool may also be malformed, so dial a new one.
 
 		err = errors.WithDeferred(err, conn.Close())
 		p.logger.Debug("dot got bad conn from pool", "addr", p.addr, slogutil.KeyError, err)
 
 		// Retry.
-		conn, err = tlsDial(h, p.tlsConf.Clone())
+		conn, err = p.tlsDialWithOpts()
 		if err != nil {
 			return nil, fmt.Errorf(
 				"dialing %s: connecting to %s: %w",
@@ -151,11 +154,11 @@ func (p *dnsOverTLS) Close() (err error) {
 
 // conn returns the first available connection from the pool if there is any, or
 // dials a new one otherwise.
-func (p *dnsOverTLS) conn(h bootstrap.DialHandler) (conn net.Conn, err error) {
+func (p *dnsOverTLS) conn(h DialHandler) (conn net.Conn, err error) {
 	// Dial a new connection outside the lock, if needed.
 	defer func() {
 		if conn == nil {
-			conn, err = tlsDial(h, p.tlsConf.Clone())
+			conn, err = p.tlsDialWithOpts()
 			err = errors.Annotate(err, "connecting to %s: %w", p.tlsConf.ServerName)
 		}
 	}()
@@ -217,7 +220,7 @@ func (p *dnsOverTLS) exchangeWithConn(conn net.Conn, req *dns.Msg) (reply *dns.M
 
 // tlsDial is basically the same as tls.DialWithDialer, but we will call our own
 // dialContext function to get connection.
-func tlsDial(dialContext bootstrap.DialHandler, conf *tls.Config) (c *tls.Conn, err error) {
+func tlsDial(dialContext DialHandler, conf *tls.Config) (c *tls.Conn, err error) {
 	// We're using bootstrapped address instead of what's passed to the
 	// function.
 	rawConn, err := dialContext(context.Background(), networkTCP, "")
@@ -228,6 +231,48 @@ func tlsDial(dialContext bootstrap.DialHandler, conf *tls.Config) (c *tls.Conn, 
 	// We want the timeout to cover the whole process: TCP connection and TLS
 	// handshake dialTimeout will be used as connection deadLine.
 	conn := tls.Client(rawConn, conf)
+	err = conn.SetDeadline(time.Now().Add(dialTimeout))
+	if err != nil {
+		// Must not happen in normal circumstances.
+		panic(fmt.Errorf("dnsproxy: tls dial: setting deadline: %w", err))
+	}
+
+	err = conn.Handshake()
+	if err != nil {
+		return nil, errors.WithDeferred(err, conn.Close())
+	}
+
+	return conn, nil
+}
+
+// tlsDialWithOpts creates a TLS connection using UpstreamOptions.DialTCP
+func (p *dnsOverTLS) tlsDialWithOpts() (c *tls.Conn, err error) {
+	// Get the underlying address from the dialer
+	_, err = p.getDialer()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a temporary context to get the address
+	ctx := context.Background()
+
+	// We'll use the bootstrap dial handler to get the address, but use UpstreamOptions for actual connection
+	// First, let's try to get the address by calling the bootstrap dial handler with a dummy function
+	var targetAddr string
+
+	// Since we can't easily extract the address from the bootstrap dial handler,
+	// we'll use the original URL's host as the target address
+	targetAddr = p.addr.Host
+
+	// Use UpstreamOptions.DialTCP for the actual TCP connection
+	rawConn, err := p.opts.DialTCP(ctx, targetAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	// We want the timeout to cover the whole process: TCP connection and TLS
+	// handshake dialTimeout will be used as connection deadLine.
+	conn := tls.Client(rawConn, p.tlsConf.Clone())
 	err = conn.SetDeadline(time.Now().Add(dialTimeout))
 	if err != nil {
 		// Must not happen in normal circumstances.

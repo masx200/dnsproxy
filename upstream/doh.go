@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/httphdr"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
@@ -36,7 +35,7 @@ const (
 
 	// dohMaxConnsPerHost controls the maximum number of connections for
 	// each host.  Note, that setting it to 1 may cause issues with Go's http
-	// implementation, see https://github.com/AdguardTeam/dnsproxy/issues/278.
+	// implementation, see https://github.com/masx200/dnsproxy/issues/278.
 	dohMaxConnsPerHost = 2
 
 	// dohMaxIdleConns controls the maximum number of connections being idle
@@ -82,6 +81,9 @@ type dnsOverHTTPS struct {
 	// separately to reduce allocations during logging and error reporting.
 	addrRedacted string
 
+	// opts contains the upstream options for connection management.
+	opts UpstreamOptions
+
 	// timeout is used in HTTP client and for H3 probes.
 	timeout time.Duration
 }
@@ -94,7 +96,7 @@ func newDoH(addr *url.URL, opts *Options) (u Upstream, err error) {
 	if addr.Scheme == "h3" {
 		addr.Scheme = "https"
 		httpVersions = []HTTPVersion{HTTPVersion3}
-	} else if httpVersions = opts.HTTPVersions; len(opts.HTTPVersions) == 0 {
+	} else if httpVersions = opts.HTTPVersions(); len(opts.HTTPVersions()) == 0 {
 		httpVersions = DefaultHTTPVersions
 	}
 
@@ -104,13 +106,13 @@ func newDoH(addr *url.URL, opts *Options) (u Upstream, err error) {
 		quicConf: &quic.Config{
 			KeepAlivePeriod: QUICKeepAlivePeriod,
 			TokenStore:      newQUICTokenStore(),
-			Tracer:          opts.QUICTracer,
+			Tracer:          opts.QUICTracer(),
 		},
 		quicConfMu: &sync.Mutex{},
 		tlsConf: &tls.Config{
 			ServerName:   addr.Hostname(),
-			RootCAs:      opts.RootCAs,
-			CipherSuites: opts.CipherSuites,
+			RootCAs:      opts.RootCAs(),
+			CipherSuites: opts.CipherSuites(),
 			// Use the default capacity for the LRU cache.  It may be useful to
 			// store several caches since the user may be routed to different
 			// servers in case there's load balancing on the server-side.
@@ -118,14 +120,15 @@ func newDoH(addr *url.URL, opts *Options) (u Upstream, err error) {
 			MinVersion:         tls.VersionTLS12,
 			// #nosec G402 -- TLS certificate verification could be disabled by
 			// configuration.
-			InsecureSkipVerify:    opts.InsecureSkipVerify,
-			VerifyPeerCertificate: opts.VerifyServerCertificate,
-			VerifyConnection:      opts.VerifyConnection,
+			InsecureSkipVerify:    opts.InsecureSkipVerify(),
+			VerifyPeerCertificate: opts.VerifyServerCertificate(),
+			VerifyConnection:      opts.VerifyConnection(),
 		},
 		clientMu:     &sync.Mutex{},
-		logger:       opts.Logger,
+		logger:       opts.Logger(),
 		addrRedacted: addr.Redacted(),
-		timeout:      opts.Timeout,
+		opts:         opts,
+		timeout:      opts.Timeout(),
 	}
 	for _, v := range httpVersions {
 		ups.tlsConf.NextProtos = append(ups.tlsConf.NextProtos, string(v))
@@ -272,7 +275,7 @@ func (p *dnsOverHTTPS) exchangeHTTPSClient(
 	}
 
 	// Prevent the client from sending User-Agent header, see
-	// https://github.com/AdguardTeam/dnsproxy/issues/211.
+	// https://github.com/masx200/dnsproxy/issues/211.
 	httpReq.Header.Set(httphdr.UserAgent, "")
 	httpReq.Header.Set(httphdr.Accept, "application/dns-message")
 
@@ -463,10 +466,17 @@ func (p *dnsOverHTTPS) createTransport() (t http.RoundTripper, err error) {
 	transport := &http.Transport{
 		TLSClientConfig:    tlsConf,
 		DisableCompression: true,
-		DialContext:        dialContext,
-		IdleConnTimeout:    transportDefaultIdleConnTimeout,
-		MaxConnsPerHost:    dohMaxConnsPerHost,
-		MaxIdleConns:       dohMaxIdleConns,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Use UpstreamOptions.DialTCP for TCP connections
+			if network == "tcp" || network == "tcp4" || network == "tcp6" {
+				return p.opts.DialTCP(ctx, addr)
+			}
+			// For other networks, fall back to the original dialer
+			return dialContext(ctx, network, addr)
+		},
+		IdleConnTimeout: transportDefaultIdleConnTimeout,
+		MaxConnsPerHost: dohMaxConnsPerHost,
+		MaxIdleConns:    dohMaxIdleConns,
 		// Since we have a custom DialContext, we need to use this field to make
 		// golang http.Client attempt to use HTTP/2. Otherwise, it would only be
 		// used when negotiated on the TLS level.
@@ -475,7 +485,7 @@ func (p *dnsOverHTTPS) createTransport() (t http.RoundTripper, err error) {
 
 	// Explicitly configure transport to use HTTP/2.
 	//
-	// See https://github.com/AdguardTeam/dnsproxy/issues/11.
+	// See https://github.com/masx200/dnsproxy/issues/11.
 	p.transportH2, err = http2.ConfigureTransports(transport)
 	if err != nil {
 		return nil, err
@@ -541,7 +551,7 @@ func (h *http3Transport) Close() (err error) {
 // create the [*http3.Transport] instance.
 func (p *dnsOverHTTPS) createTransportH3(
 	tlsConfig *tls.Config,
-	dialContext bootstrap.DialHandler,
+	dialContext DialHandler,
 ) (roundTripper http.RoundTripper, err error) {
 	if !p.supportsH3() {
 		return nil, errors.Error("HTTP3 support is not enabled")
@@ -562,7 +572,17 @@ func (p *dnsOverHTTPS) createTransportH3(
 			tlsCfg *tls.Config,
 			cfg *quic.Config,
 		) (c *quic.Conn, err error) {
-			return quic.DialAddrEarly(ctx, addr, tlsCfg, cfg)
+			// First, use UpstreamOptions.DialUDP to establish UDP connection
+			udpConn, dialErr := p.opts.DialUDP(ctx, addr)
+			if dialErr != nil {
+				return nil, fmt.Errorf("dialing UDP for HTTP/3: %w", dialErr)
+			}
+			defer udpConn.Close()
+
+			// Use the UDP connection's remote address for QUIC
+			remoteAddr := udpConn.RemoteAddr().String()
+
+			return quic.DialAddrEarly(ctx, remoteAddr, tlsCfg, cfg)
 		},
 		DisableCompression: true,
 		TLSClientConfig:    tlsConfig,
@@ -577,9 +597,9 @@ func (p *dnsOverHTTPS) createTransportH3(
 // should use to establish the QUIC connections.
 func (p *dnsOverHTTPS) probeH3(
 	tlsConfig *tls.Config,
-	dialContext bootstrap.DialHandler,
+	dialContext DialHandler,
 ) (addr string, err error) {
-	// We're using bootstrapped address instead of what's passed to the function
+	// First, use the bootstrap dialer to get the address
 	// it does not create an actual connection, but it helps us determine
 	// what IP is actually reachable (when there are v4/v6 addresses).
 	rawConn, err := dialContext(context.Background(), "udp", "")
@@ -595,6 +615,16 @@ func (p *dnsOverHTTPS) probeH3(
 	}
 
 	addr = udpConn.RemoteAddr().String()
+
+	// Now use UpstreamOptions.DialUDP to establish the actual UDP connection
+	udpConn2, err := p.opts.DialUDP(context.Background(), addr)
+	if err != nil {
+		return "", fmt.Errorf("dialing UDP for probing: %w", err)
+	}
+	defer udpConn2.Close()
+
+	// Get the remote address from the UDP connection created by UpstreamOptions
+	addr = udpConn2.RemoteAddr().String()
 
 	// Avoid spending time on probing if this upstream only supports HTTP/3.
 	if p.supportsH3() && !p.supportsHTTP() {
@@ -670,12 +700,22 @@ func (p *dnsOverHTTPS) probeQUIC(addr string, tlsConfig *tls.Config, ch chan err
 
 // probeTLS attempts to establish a TLS connection to the specified address. We
 // run probeQUIC and probeTLS in parallel and see which one is faster.
-func (p *dnsOverHTTPS) probeTLS(dialContext bootstrap.DialHandler, tlsConfig *tls.Config, ch chan error) {
+func (p *dnsOverHTTPS) probeTLS(dialContext DialHandler, tlsConfig *tls.Config, ch chan error) {
 	startTime := time.Now()
 
-	conn, err := tlsDial(dialContext, tlsConfig)
+	// Use UpstreamOptions.DialTCP to establish TCP connection
+	tcpConn, err := p.opts.DialTCP(context.Background(), p.addr.Host)
 	if err != nil {
-		ch <- fmt.Errorf("opening TLS connection: %w", err)
+		ch <- fmt.Errorf("opening TCP connection: %w", err)
+		return
+	}
+	defer tcpConn.Close()
+
+	// Create TLS connection over the TCP connection
+	conn := tls.Client(tcpConn, tlsConfig)
+	err = conn.Handshake()
+	if err != nil {
+		ch <- fmt.Errorf("TLS handshake failed: %w", err)
 		return
 	}
 

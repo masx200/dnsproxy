@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/AdguardTeam/dnsproxy/proxy"
 	"github.com/AdguardTeam/golibs/hostsfile"
+	"github.com/masx200/dnsproxy/proxy"
 )
 
 // DefaultConfig is the configuration for [Default].

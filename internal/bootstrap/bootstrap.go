@@ -15,33 +15,39 @@ import (
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
-)
-
-// Network is a network type for use in [Resolver]'s methods.
-type Network = string
-
-const (
-	// NetworkIP is a network type for both address families.
-	NetworkIP Network = "ip"
-
-	// NetworkIP4 is a network type for IPv4 address family.
-	NetworkIP4 Network = "ip4"
-
-	// NetworkIP6 is a network type for IPv6 address family.
-	NetworkIP6 Network = "ip6"
-
-	// NetworkTCP is a network type for TCP connections.
-	NetworkTCP Network = "tcp"
-
-	// NetworkUDP is a network type for UDP connections.
-	NetworkUDP Network = "udp"
+	"github.com/masx200/dnsproxy/internal/types"
+	"github.com/masx200/dnsproxy/upstream"
 )
 
 // DialHandler is a dial function for creating unencrypted network connections
 // to the upstream server.  It establishes the connection to the server
 // specified at initialization and ignores the addr.  network must be one of
 // [NetworkTCP] or [NetworkUDP].
-type DialHandler func(ctx context.Context, network Network, addr string) (conn net.Conn, err error)
+// This is exported from the upstream package to avoid circular imports.
+type DialHandler = upstream.DialHandler
+
+// Resolver resolves the hostnames to IP addresses.
+type Resolver = types.Resolver
+
+// Network is a network type for use in [Resolver]'s methods.
+type Network = types.Network
+
+const (
+	// NetworkIP is a network type for both address families.
+	NetworkIP = types.NetworkIP
+
+	// NetworkIP4 is a network type for IPv4 address family.
+	NetworkIP4 = types.NetworkIP4
+
+	// NetworkIP6 is a network type for IPv6 address family.
+	NetworkIP6 = types.NetworkIP6
+
+	// NetworkTCP is a network type for TCP connections.
+	NetworkTCP = types.NetworkTCP
+
+	// NetworkUDP is a network type for UDP connections.
+	NetworkUDP = types.NetworkUDP
+)
 
 // ResolveDialContext returns a DialHandler that uses addresses resolved from u
 // using resolver.  l and u must not be nil.
@@ -90,6 +96,59 @@ func ResolveDialContext(
 	}
 
 	return NewDialContext(timeout, l, addrs...), nil
+}
+
+// NewDialContextWithOpts returns a DialHandler that dials addrs and returns the first
+// successful connection using the provided UpstreamOptions.  At least a single addr
+// should be specified.  l must not be nil.
+func NewDialContextWithOpts(opts upstream.UpstreamOptions, l *slog.Logger, addrs ...string) (h DialHandler) {
+	addrLen := len(addrs)
+	if addrLen == 0 {
+		l.Debug("no addresses to dial")
+
+		return func(_ context.Context, _, _ string) (conn net.Conn, err error) {
+			return nil, errors.Error("no addresses")
+		}
+	}
+
+	return func(ctx context.Context, network Network, _ string) (conn net.Conn, err error) {
+		var errs []error
+
+		// Return first succeeded connection.  Note that we're using addrs
+		// instead of what's passed to the function.
+		for i, addr := range addrs {
+			a := l.With("addr", addr)
+			a.DebugContext(ctx, "dialing", "idx", i+1, "total", addrLen)
+
+			start := time.Now()
+
+			// Use UpstreamOptions methods for dialing
+			switch network {
+			case NetworkTCP:
+				conn, err = opts.DialTCP(ctx, addr)
+			case NetworkUDP:
+				conn, err = opts.DialUDP(ctx, addr)
+			default:
+				// Fallback to net.Dialer for other network types
+				dialer := &net.Dialer{Timeout: opts.Timeout()}
+				conn, err = dialer.DialContext(ctx, network, addr)
+			}
+
+			elapsed := time.Since(start)
+			if err != nil {
+				a.DebugContext(ctx, "connection failed", "elapsed", elapsed, slogutil.KeyError, err)
+				errs = append(errs, err)
+
+				continue
+			}
+
+			a.DebugContext(ctx, "connection succeeded", "elapsed", elapsed)
+
+			return conn, nil
+		}
+
+		return nil, errors.Join(errs...)
+	}
 }
 
 // NewDialContext returns a DialHandler that dials addrs and returns the first

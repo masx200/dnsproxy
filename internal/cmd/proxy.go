@@ -12,18 +12,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/dnsmsg"
-	"github.com/AdguardTeam/dnsproxy/internal/handler"
-	proxynetutil "github.com/AdguardTeam/dnsproxy/internal/netutil"
-	"github.com/AdguardTeam/dnsproxy/proxy"
-	"github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/osutil"
 	"github.com/ameshkov/dnscrypt/v2"
+	"github.com/masx200/dnsproxy/internal/dnsmsg"
+	"github.com/masx200/dnsproxy/internal/handler"
+	proxynetutil "github.com/masx200/dnsproxy/internal/netutil"
+	"github.com/masx200/dnsproxy/proxy"
+	"github.com/masx200/dnsproxy/upstream"
 	"gopkg.in/yaml.v3"
 )
+
+// min returns the minimum of two durations.
+func min(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // TODO(e.burkov):  Use a separate type for the YAML configuration file.
 
@@ -139,24 +147,39 @@ func (conf *configuration) initUpstreams(
 	}
 
 	timeout := time.Duration(conf.Timeout)
-	bootOpts := &upstream.Options{
-		Logger:             l,
-		HTTPVersions:       httpVersions,
-		InsecureSkipVerify: conf.Insecure,
-		Timeout:            timeout,
-	}
+	bootOpts := upstream.NewOptions(
+		l,             // logger
+		nil,           // verifyServerCertificate
+		nil,           // verifyConnection
+		nil,           // verifyDNSCryptCertificate
+		nil,           // quicTracer
+		nil,           // rootCAs
+		nil,           // cipherSuites
+		nil,           // bootstrap
+		httpVersions,  // httpVersions
+		timeout,       // timeout
+		conf.Insecure, // insecureSkipVerify
+		false,         // preferIPv6
+	)
 	boot, err := initBootstrap(ctx, l, conf.BootstrapDNS, bootOpts)
 	if err != nil {
 		return fmt.Errorf("initializing bootstrap: %w", err)
 	}
 
-	upsOpts := &upstream.Options{
-		Logger:             l,
-		HTTPVersions:       httpVersions,
-		InsecureSkipVerify: conf.Insecure,
-		Bootstrap:          boot,
-		Timeout:            timeout,
-	}
+	upsOpts := upstream.NewOptions(
+		l,             // logger
+		nil,           // verifyServerCertificate
+		nil,           // verifyConnection
+		nil,           // verifyDNSCryptCertificate
+		nil,           // quicTracer
+		nil,           // rootCAs
+		nil,           // cipherSuites
+		boot,          // bootstrap
+		httpVersions,  // httpVersions
+		timeout,       // timeout
+		conf.Insecure, // insecureSkipVerify
+		false,         // preferIPv6
+	)
 	upstreams := loadServersList(conf.Upstreams)
 
 	config.UpstreamConfig, err = proxy.ParseUpstreamsConfig(upstreams, upsOpts)
@@ -164,12 +187,20 @@ func (conf *configuration) initUpstreams(
 		return fmt.Errorf("parsing upstreams configuration: %w", err)
 	}
 
-	privateUpsOpts := &upstream.Options{
-		Logger:       l,
-		HTTPVersions: httpVersions,
-		Bootstrap:    boot,
-		Timeout:      min(defaultLocalTimeout, timeout),
-	}
+	privateUpsOpts := upstream.NewOptions(
+		l,                                 // logger
+		nil,                               // verifyServerCertificate
+		nil,                               // verifyConnection
+		nil,                               // verifyDNSCryptCertificate
+		nil,                               // quicTracer
+		nil,                               // rootCAs
+		nil,                               // cipherSuites
+		boot,                              // bootstrap
+		httpVersions,                      // httpVersions
+		min(defaultLocalTimeout, timeout), // timeout
+		false,                             // insecureSkipVerify
+		false,                             // preferIPv6
+	)
 	privateUpstreams := loadServersList(conf.PrivateRDNSUpstreams)
 
 	private, err := proxy.ParseUpstreamsConfig(privateUpstreams, privateUpsOpts)
@@ -235,11 +266,11 @@ func initBootstrap(
 			return net.DefaultResolver, nil
 		}
 
-		return upstream.ConsequentResolver{etcHosts, net.DefaultResolver}, nil
+		return upstream.NewConsequentResolver(etcHosts, net.DefaultResolver), nil
 	case 1:
 		return resolvers[0], nil
 	default:
-		return upstream.ParallelResolver(resolvers), nil
+		return upstream.NewParallelResolver(resolvers...), nil
 	}
 }
 

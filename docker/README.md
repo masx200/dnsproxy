@@ -1,13 +1,13 @@
 # DNS Proxy
 
 A simple DNS proxy server that supports all existing DNS protocols including
-`DNS-over-TLS`, `DNS-over-HTTPS`, `DNSCrypt`, and `DNS-over-QUIC`. Moreover,
-it can work as a `DNS-over-HTTPS`, `DNS-over-TLS` or `DNS-over-QUIC` server.
+`DNS-over-TLS`, `DNS-over-HTTPS`, `DNSCrypt`, and `DNS-over-QUIC`. Moreover, it
+can work as a `DNS-over-HTTPS`, `DNS-over-TLS` or `DNS-over-QUIC` server.
 
-Learn more about dnsproxy and its full capabilities in
-its [Github repo][dnsproxy].
+Learn more about dnsproxy and its full capabilities in its
+[Github repo][dnsproxy].
 
-[dnsproxy]: https://github.com/AdguardTeam/dnsproxy
+[dnsproxy]: https://github.com/masx200/dnsproxy
 
 ## Quick start
 

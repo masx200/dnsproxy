@@ -11,32 +11,52 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
-	"github.com/AdguardTeam/dnsproxy/proxyutil"
 	"github.com/AdguardTeam/golibs/errors"
+	"github.com/masx200/dnsproxy/internal/types"
+	"github.com/masx200/dnsproxy/proxyutil"
 	"github.com/miekg/dns"
 )
 
 // Resolver resolves the hostnames to IP addresses.  Note, that [net.Resolver]
 // from standard library also implements this interface.
-type Resolver = bootstrap.Resolver
+type Resolver = types.Resolver
 
 // StaticResolver is a resolver which always responds with an underlying slice
 // of IP addresses.
-type StaticResolver = bootstrap.StaticResolver
+type StaticResolver = types.StaticResolver
 
 // ParallelResolver is a slice of resolvers that are queried concurrently until
 // the first successful response is returned, as opposed to all resolvers being
 // queried in order in [ConsequentResolver].
-type ParallelResolver = bootstrap.ParallelResolver
+type ParallelResolver = types.ParallelResolver
 
 // ConsequentResolver is a slice of resolvers that are queried in order until
 // the first successful non-empty response, as opposed to just successful
 // response requirement in [ParallelResolver].
-type ConsequentResolver = bootstrap.ConsequentResolver
+type ConsequentResolver = types.ConsequentResolver
+
+// Network is a network type for use in [Resolver]'s methods.
+type Network = types.Network
+
+const (
+	// NetworkIP is a network type for both address families.
+	NetworkIP = types.NetworkIP
+
+	// NetworkIP4 is a network type for IPv4 address family.
+	NetworkIP4 = types.NetworkIP4
+
+	// NetworkIP6 is a network type for IPv6 address family.
+	NetworkIP6 = types.NetworkIP6
+
+	// NetworkTCP is a network type for TCP connections.
+	NetworkTCP = types.NetworkTCP
+
+	// NetworkUDP is a network type for UDP connections.
+	NetworkUDP = types.NetworkUDP
+)
 
 // UpstreamResolver is a wrapper around Upstream that implements the
-// [bootstrap.Resolver] interface.
+// [Resolver] interface.
 type UpstreamResolver struct {
 	// Upstream is used for lookups.  It must not be nil.
 	Upstream
@@ -52,10 +72,10 @@ func NewUpstreamResolver(resolverAddress string, opts *Options) (r *UpstreamReso
 
 	// TODO(ameshkov):  Aren't other options needed here?
 	if opts != nil {
-		upsOpts.Timeout = opts.Timeout
-		upsOpts.VerifyServerCertificate = opts.VerifyServerCertificate
-		upsOpts.PreferIPv6 = opts.PreferIPv6
-		upsOpts.Logger = opts.Logger
+		upsOpts.timeout = opts.timeout
+		upsOpts.verifyServerCertificate = opts.verifyServerCertificate
+		upsOpts.preferIPv6 = opts.preferIPv6
+		upsOpts.logger = opts.logger
 	}
 
 	ups, err := AddressToUpstream(resolverAddress, upsOpts)
@@ -127,7 +147,7 @@ var _ Resolver = &UpstreamResolver{}
 // TODO(e.burkov):  Investigate why the empty slice is returned instead of nil.
 func (r *UpstreamResolver) LookupNetIP(
 	ctx context.Context,
-	network bootstrap.Network,
+	network Network,
 	host string,
 ) (ips []netip.Addr, err error) {
 	if host == "" {
@@ -152,27 +172,27 @@ type ipResult struct {
 }
 
 // lookupNetIP performs a DNS lookup of host and returns the result.  network
-// must be either [bootstrap.NetworkIP4], [bootstrap.NetworkIP6], or
-// [bootstrap.NetworkIP].  host must be in a lower-case FQDN form.
+// must be either [NetworkIP4], [NetworkIP6], or
+// [NetworkIP].  host must be in a lower-case FQDN form.
 //
 // TODO(e.burkov):  Use context.
 func (r *UpstreamResolver) lookupNetIP(
 	_ context.Context,
-	network bootstrap.Network,
+	network Network,
 	host string,
 ) (result *ipResult, err error) {
 	switch network {
-	case bootstrap.NetworkIP4, bootstrap.NetworkIP6:
+	case NetworkIP4, NetworkIP6:
 		return r.request(host, network)
-	case bootstrap.NetworkIP:
+	case NetworkIP:
 		// Go on.
 	default:
 		return result, fmt.Errorf("unsupported network %s", network)
 	}
 
 	resCh := make(chan any, 2)
-	go r.resolveAsync(resCh, host, bootstrap.NetworkIP4)
-	go r.resolveAsync(resCh, host, bootstrap.NetworkIP6)
+	go r.resolveAsync(resCh, host, NetworkIP4)
+	go r.resolveAsync(resCh, host, NetworkIP6)
 
 	var errs []error
 	result = &ipResult{}
@@ -194,17 +214,17 @@ func (r *UpstreamResolver) lookupNetIP(
 
 // request performs a single DNS lookup of host and returns all the valid
 // addresses from the answer section of the response.  network must be either
-// [bootstrap.NetworkIP4], or [bootstrap.NetworkIP6].  host must be in a
+// [NetworkIP4], or [NetworkIP6].  host must be in a
 // lower-case FQDN form.
 //
 // TODO(e.burkov):  Consider NS and Extra sections when setting TTL.  Check out
 // what RFCs say about it.
-func (r *UpstreamResolver) request(host string, n bootstrap.Network) (res *ipResult, err error) {
+func (r *UpstreamResolver) request(host string, n Network) (res *ipResult, err error) {
 	var qtype uint16
 	switch n {
-	case bootstrap.NetworkIP4:
+	case NetworkIP4:
 		qtype = dns.TypeA
-	case bootstrap.NetworkIP6:
+	case NetworkIP6:
 		qtype = dns.TypeAAAA
 	default:
 		panic(fmt.Sprintf("unsupported network %q", n))
@@ -260,6 +280,16 @@ func (r *UpstreamResolver) resolveAsync(resCh chan<- any, host, network string) 
 	}
 }
 
+// NewConsequentResolver creates a new ConsequentResolver with the specified resolvers.
+func NewConsequentResolver(resolvers ...Resolver) *ConsequentResolver {
+	return types.NewConsequentResolver(resolvers...)
+}
+
+// NewParallelResolver creates a new ParallelResolver with the specified resolvers.
+func NewParallelResolver(resolvers ...Resolver) *ParallelResolver {
+	return types.NewParallelResolver(resolvers...)
+}
+
 // CachingResolver is a [Resolver] that caches the results of lookups.  It's
 // required to be created with [NewCachingResolver].
 type CachingResolver struct {
@@ -293,7 +323,7 @@ var _ Resolver = (*CachingResolver)(nil)
 // each other in the cache.
 func (r *CachingResolver) LookupNetIP(
 	ctx context.Context,
-	network bootstrap.Network,
+	network Network,
 	host string,
 ) (addrs []netip.Addr, err error) {
 	now := time.Now()

@@ -8,10 +8,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/container"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/netutil"
+	"github.com/masx200/dnsproxy/upstream"
 )
 
 // UnqualifiedNames is a key for [UpstreamConfig.DomainReservedUpstreams] map to
@@ -97,13 +97,14 @@ func ParseUpstreamsConfig(
 		opts = &upstream.Options{}
 	}
 
-	if opts.Logger == nil {
-		opts.Logger = slog.Default()
+	logger := opts.Logger()
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	p := &configParser{
 		options:                  opts,
-		logger:                   opts.Logger,
+		logger:                   logger,
 		upstreamsIndex:           map[string]upstream.Upstream{},
 		domainReservedUpstreams:  map[string][]upstream.Upstream{},
 		specifiedDomainUpstreams: map[string][]upstream.Upstream{},

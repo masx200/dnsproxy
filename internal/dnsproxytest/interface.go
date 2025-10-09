@@ -1,9 +1,9 @@
 package dnsproxytest
 
 import (
-	"github.com/AdguardTeam/dnsproxy/internal/dnsmsg"
-	"github.com/AdguardTeam/dnsproxy/upstream"
 	"github.com/AdguardTeam/golibs/testutil"
+	"github.com/masx200/dnsproxy/internal/dnsmsg"
+	"github.com/masx200/dnsproxy/upstream"
 	"github.com/miekg/dns"
 )
 

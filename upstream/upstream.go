@@ -17,16 +17,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AdguardTeam/dnsproxy/internal/bootstrap"
 	"github.com/AdguardTeam/golibs/errors"
-	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/ameshkov/dnscrypt/v2"
 	"github.com/ameshkov/dnsstamps"
+	"github.com/masx200/dnsproxy/internal/types"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/logging"
 )
+
+// DialHandler is a function type for dialing connections
+type DialHandler func(ctx context.Context, network string, addr string) (conn net.Conn, err error)
 
 // Upstream is an interface for a DNS resolver.  All the methods must be safe
 // for concurrent use.
@@ -53,73 +55,171 @@ type QUICTraceFunc func(
 	connID quic.ConnectionID,
 ) (tracer *logging.ConnectionTracer)
 
+// UpstreamOptions defines the interface for upstream configuration and connection
+// management. This abstracts the Options struct and provides unified dialing methods.
+type UpstreamOptions interface {
+	// Getter methods for Options fields
+	Logger() *slog.Logger
+	VerifyServerCertificate() func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+	VerifyConnection() func(state tls.ConnectionState) error
+	VerifyDNSCryptCertificate() func(cert *dnscrypt.Cert) error
+	QUICTracer() QUICTraceFunc
+	RootCAs() *x509.CertPool
+	CipherSuites() []uint16
+	Bootstrap() Resolver
+	HTTPVersions() []HTTPVersion
+	Timeout() time.Duration
+	InsecureSkipVerify() bool
+	PreferIPv6() bool
+
+	// DialTCP creates a TCP connection to the specified address using the
+	// configuration from this UpstreamOptions.
+	DialTCP(ctx context.Context, addr string) (net.Conn, error)
+
+	// DialUDP creates a UDP connection to the specified address using the
+	// configuration from this UpstreamOptions.
+	DialUDP(ctx context.Context, addr string) (*net.UDPConn, error)
+}
+
 // Options for AddressToUpstream func.  With these options we can configure the
 // upstream properties.
 type Options struct {
-	// Logger is used for logging during parsing and upstream exchange.  If nil,
+	// logger is used for logging during parsing and upstream exchange.  If nil,
 	// [slog.Default] is used.
-	Logger *slog.Logger
+	logger *slog.Logger
 
-	// VerifyServerCertificate is used to set the VerifyPeerCertificate property
+	// verifyServerCertificate is used to set the VerifyPeerCertificate property
 	// of the *tls.Config for DNS-over-HTTPS, DNS-over-QUIC, and DNS-over-TLS.
-	VerifyServerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+	verifyServerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 
-	// VerifyConnection is used to set the VerifyConnection property
+	// verifyConnection is used to set the VerifyConnection property
 	// of the *tls.Config for DNS-over-HTTPS, DNS-over-QUIC, and DNS-over-TLS.
-	VerifyConnection func(state tls.ConnectionState) error
+	verifyConnection func(state tls.ConnectionState) error
 
-	// VerifyDNSCryptCertificate is the callback the DNSCrypt server certificate
+	// verifyDNSCryptCertificate is the callback the DNSCrypt server certificate
 	// will be passed to.  It's called in dnsCrypt.exchangeDNSCrypt.
 	// Upstream.Exchange method returns any error caused by it.
-	VerifyDNSCryptCertificate func(cert *dnscrypt.Cert) error
+	verifyDNSCryptCertificate func(cert *dnscrypt.Cert) error
 
-	// QUICTracer is an optional callback that allows tracing every QUIC
+	// quicTracer is an optional callback that allows tracing every QUIC
 	// connection and logging every packet that goes through.
-	QUICTracer QUICTraceFunc
+	quicTracer QUICTraceFunc
 
-	// RootCAs is the CertPool that must be used by all upstreams.  Redefining
-	// RootCAs makes sense on iOS to overcome the 15MB memory limit of the
+	// rootCAs is the CertPool that must be used by all upstreams.  Redefining
+	// rootCAs makes sense on iOS to overcome the 15MB memory limit of the
 	// NEPacketTunnelProvider.
-	RootCAs *x509.CertPool
+	rootCAs *x509.CertPool
 
-	// CipherSuites is a custom list of TLSv1.2 ciphers.
-	CipherSuites []uint16
+	// cipherSuites is a custom list of TLSv1.2 ciphers.
+	cipherSuites []uint16
 
-	// Bootstrap is used to resolve upstreams' hostnames.  If nil, the
+	// bootstrap is used to resolve upstreams' hostnames.  If nil, the
 	// [net.DefaultResolver] will be used.
-	Bootstrap Resolver
+	bootstrap Resolver
 
-	// HTTPVersions is a list of HTTP versions that should be supported by the
+	// httpVersions is a list of HTTP versions that should be supported by the
 	// DNS-over-HTTPS client.  If not set, HTTP/1.1 and HTTP/2 will be used.
-	HTTPVersions []HTTPVersion
+	httpVersions []HTTPVersion
 
-	// Timeout is the default upstream timeout.  It's also used as a timeout for
+	// timeout is the default upstream timeout.  It's also used as a timeout for
 	// bootstrap DNS requests.  Zero value disables the timeout.
-	Timeout time.Duration
+	timeout time.Duration
 
-	// InsecureSkipVerify disables verifying the server's certificate.
-	InsecureSkipVerify bool
+	// insecureSkipVerify disables verifying the server's certificate.
+	insecureSkipVerify bool
 
-	// PreferIPv6 tells the bootstrapper to prefer IPv6 addresses for an
+	// preferIPv6 tells the bootstrapper to prefer IPv6 addresses for an
 	// upstream.
-	PreferIPv6 bool
+	preferIPv6 bool
+}
+
+// UpstreamOptions interface implementation for Options struct.
+
+func (o *Options) Logger() *slog.Logger { return o.logger }
+func (o *Options) VerifyServerCertificate() func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+	return o.verifyServerCertificate
+}
+func (o *Options) VerifyConnection() func(state tls.ConnectionState) error { return o.verifyConnection }
+func (o *Options) VerifyDNSCryptCertificate() func(cert *dnscrypt.Cert) error {
+	return o.verifyDNSCryptCertificate
+}
+func (o *Options) QUICTracer() QUICTraceFunc   { return o.quicTracer }
+func (o *Options) RootCAs() *x509.CertPool     { return o.rootCAs }
+func (o *Options) CipherSuites() []uint16      { return o.cipherSuites }
+func (o *Options) Bootstrap() Resolver         { return o.bootstrap }
+func (o *Options) HTTPVersions() []HTTPVersion { return o.httpVersions }
+func (o *Options) Timeout() time.Duration      { return o.timeout }
+func (o *Options) InsecureSkipVerify() bool    { return o.insecureSkipVerify }
+func (o *Options) PreferIPv6() bool            { return o.preferIPv6 }
+
+// DialTCP creates a TCP connection using the configuration from Options.
+func (o *Options) DialTCP(ctx context.Context, addr string) (net.Conn, error) {
+	dialer := &net.Dialer{
+		Timeout: o.timeout,
+	}
+	return dialer.DialContext(ctx, "tcp", addr)
+}
+
+// DialUDP creates a UDP connection using the configuration from Options.
+func (o *Options) DialUDP(ctx context.Context, addr string) (*net.UDPConn, error) {
+	dialer := &net.Dialer{
+		Timeout: o.timeout,
+	}
+	conn, err := dialer.DialContext(ctx, "udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	// Type assertion is safe since we specified "udp" network
+	return conn.(*net.UDPConn), nil
 }
 
 // Clone copies o to a new struct.  Note, that this is not a deep clone.
 func (o *Options) Clone() (clone *Options) {
 	return &Options{
-		Bootstrap:                 o.Bootstrap,
-		Timeout:                   o.Timeout,
-		HTTPVersions:              o.HTTPVersions,
-		VerifyServerCertificate:   o.VerifyServerCertificate,
-		VerifyConnection:          o.VerifyConnection,
-		VerifyDNSCryptCertificate: o.VerifyDNSCryptCertificate,
-		InsecureSkipVerify:        o.InsecureSkipVerify,
-		PreferIPv6:                o.PreferIPv6,
-		QUICTracer:                o.QUICTracer,
-		RootCAs:                   o.RootCAs,
-		CipherSuites:              o.CipherSuites,
-		Logger:                    o.Logger,
+		bootstrap:                 o.bootstrap,
+		timeout:                   o.timeout,
+		httpVersions:              o.httpVersions,
+		verifyServerCertificate:   o.verifyServerCertificate,
+		verifyConnection:          o.verifyConnection,
+		verifyDNSCryptCertificate: o.verifyDNSCryptCertificate,
+		insecureSkipVerify:        o.insecureSkipVerify,
+		preferIPv6:                o.preferIPv6,
+		quicTracer:                o.quicTracer,
+		rootCAs:                   o.rootCAs,
+		cipherSuites:              o.cipherSuites,
+		logger:                    o.logger,
+	}
+}
+
+// NewOptions creates a new Options struct with the specified values.
+// This is the preferred way to create Options instances since the fields are private.
+func NewOptions(
+	logger *slog.Logger,
+	verifyServerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error,
+	verifyConnection func(state tls.ConnectionState) error,
+	verifyDNSCryptCertificate func(cert *dnscrypt.Cert) error,
+	quicTracer QUICTraceFunc,
+	rootCAs *x509.CertPool,
+	cipherSuites []uint16,
+	bootstrap Resolver,
+	httpVersions []HTTPVersion,
+	timeout time.Duration,
+	insecureSkipVerify bool,
+	preferIPv6 bool,
+) *Options {
+	return &Options{
+		logger:                    logger,
+		verifyServerCertificate:   verifyServerCertificate,
+		verifyConnection:          verifyConnection,
+		verifyDNSCryptCertificate: verifyDNSCryptCertificate,
+		quicTracer:                quicTracer,
+		rootCAs:                   rootCAs,
+		cipherSuites:              cipherSuites,
+		bootstrap:                 bootstrap,
+		httpVersions:              httpVersions,
+		timeout:                   timeout,
+		insecureSkipVerify:        insecureSkipVerify,
+		preferIPv6:                preferIPv6,
 	}
 }
 
@@ -186,8 +286,8 @@ func AddressToUpstream(addr string, opts *Options) (u Upstream, err error) {
 		opts = &Options{}
 	}
 
-	if opts.Logger == nil {
-		opts.Logger = slog.Default()
+	if opts.logger == nil {
+		opts.logger = slog.Default()
 	}
 
 	var uu *url.URL
@@ -239,7 +339,7 @@ func validateUpstreamURL(u *url.URL) (err error) {
 	if l := len(host); l >= minEnclosedIPv6Len && host[0] == '[' && host[l-1] == ']' {
 		// Might be an IPv6 address enclosed in square brackets with no port.
 		//
-		// See https://github.com/AdguardTeam/dnsproxy/issues/379.
+		// See https://github.com/masx200/dnsproxy/issues/379.
 		possibleIP = host[1 : l-1]
 	}
 	if netutil.IsValidIPString(possibleIP) {
@@ -292,7 +392,7 @@ func parseStamp(upsURL *url.URL, opts *Options) (u Upstream, err error) {
 			return nil, fmt.Errorf("invalid server stamp address %s", stamp.ServerAddrStr)
 		}
 
-		opts.Bootstrap = StaticResolver{ip}
+		opts.bootstrap = types.NewStaticResolver([]netip.Addr{ip})
 	}
 
 	switch stamp.Proto {
@@ -374,34 +474,62 @@ func isTimeout(err error) (ok bool) {
 }
 
 // DialerInitializer returns the handler that it creates.
-type DialerInitializer func() (handler bootstrap.DialHandler, err error)
+type DialerInitializer func() (handler DialHandler, err error)
 
 // newDialerInitializer creates an initializer of the dialer that will dial the
 // addresses resolved from u using opts.
 func newDialerInitializer(u *url.URL, opts *Options) (di DialerInitializer) {
-	var l *slog.Logger
-	if opts.Logger != nil {
-		l = opts.Logger.With(slogutil.KeyPrefix, "bootstrap")
-	} else {
-		l = slog.Default()
-	}
 
 	if netutil.IsValidIPPortString(u.Host) {
 		// Don't resolve the address of the server since it's already an IP.
-		handler := bootstrap.NewDialContext(opts.Timeout, l, u.Host)
+		dialer := &net.Dialer{Timeout: opts.timeout}
+		handler := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, u.Host)
+		}
 
-		return func() (h bootstrap.DialHandler, dialerErr error) {
+		return func() (h DialHandler, dialerErr error) {
 			return handler, nil
 		}
 	}
 
-	boot := opts.Bootstrap
+	// For domain names, we'll use the resolver to get IPs
+	boot := opts.bootstrap
 	if boot == nil {
 		// Use the default resolver for bootstrapping.
 		boot = net.DefaultResolver
 	}
 
-	return func() (h bootstrap.DialHandler, err error) {
-		return bootstrap.ResolveDialContext(u, opts.Timeout, boot, opts.PreferIPv6, l)
+	return func() (h DialHandler, err error) {
+		// Simple implementation that resolves the hostname and creates a dial handler
+		return func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Resolve the hostname to IPs
+			host, _, err := netutil.SplitHostPort(u.Host)
+			if err != nil {
+				host = u.Host
+			}
+
+			var ips []netip.Addr
+			if boot != nil {
+				ips, err = boot.LookupNetIP(ctx, "ip", host)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("no IP addresses found for %s", host)
+			}
+
+			// Try each IP until we succeed
+			dialer := &net.Dialer{Timeout: opts.timeout}
+			for _, ip := range ips {
+				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), "53"))
+				if err == nil {
+					return conn, nil
+				}
+			}
+
+			return nil, fmt.Errorf("failed to connect to any IP address for %s", host)
+		}, nil
 	}
 }
