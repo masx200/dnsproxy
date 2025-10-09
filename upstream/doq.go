@@ -108,12 +108,12 @@ func newDoQ(addr *url.URL, opts *Options) (u Upstream, err error) {
 		quicConfig: &quic.Config{
 			KeepAlivePeriod: QUICKeepAlivePeriod,
 			TokenStore:      newQUICTokenStore(),
-			Tracer:          opts.QUICTracer(),
+			Tracer:          opts.QUICTracer,
 		},
 		tlsConf: &tls.Config{
 			ServerName:   addr.Hostname(),
-			RootCAs:      opts.RootCAs(),
-			CipherSuites: opts.CipherSuites(),
+			RootCAs:      opts.RootCAs,
+			CipherSuites: opts.CipherSuites,
 			// Use the default capacity for the LRU cache.  It may be useful to
 			// store several caches since the user may be routed to different
 			// servers in case there's load balancing on the server-side.
@@ -121,17 +121,17 @@ func newDoQ(addr *url.URL, opts *Options) (u Upstream, err error) {
 			MinVersion:         tls.VersionTLS12,
 			// #nosec G402 -- TLS certificate verification could be disabled by
 			// configuration.
-			InsecureSkipVerify:    opts.InsecureSkipVerify(),
-			VerifyPeerCertificate: opts.VerifyServerCertificate(),
-			VerifyConnection:      opts.VerifyConnection(),
+			InsecureSkipVerify:    opts.InsecureSkipVerify,
+			VerifyPeerCertificate: opts.VerifyServerCertificate,
+			VerifyConnection:      opts.VerifyConnection,
 			NextProtos:            compatProtoDQ,
 		},
 		quicConfigMu: &sync.Mutex{},
 		connMu:       &sync.Mutex{},
 		bytesPoolMu:  &sync.Mutex{},
-		logger:       opts.Logger(),
+		logger:       opts.Logger,
 		opts:         opts,
-		timeout:      opts.Timeout(),
+		timeout:      opts.Timeout,
 	}
 
 	runtime.SetFinalizer(u, (*dnsOverQUIC).Close)

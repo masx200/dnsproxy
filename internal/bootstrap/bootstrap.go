@@ -130,7 +130,7 @@ func NewDialContextWithOpts(opts upstream.UpstreamOptions, l *slog.Logger, addrs
 				conn, err = opts.DialUDP(ctx, addr)
 			default:
 				// Fallback to net.Dialer for other network types
-				dialer := &net.Dialer{Timeout: opts.Timeout()}
+				dialer := &net.Dialer{Timeout: opts.GetTimeout()}
 				conn, err = dialer.DialContext(ctx, network, addr)
 			}
 
@@ -149,6 +149,11 @@ func NewDialContextWithOpts(opts upstream.UpstreamOptions, l *slog.Logger, addrs
 
 		return nil, errors.Join(errs...)
 	}
+}
+
+// NewParallelResolver creates a new ParallelResolver with the specified resolvers.
+func NewParallelResolver(resolvers ...Resolver) *types.ParallelResolver {
+	return types.NewParallelResolver(resolvers...)
 }
 
 // NewDialContext returns a DialHandler that dials addrs and returns the first

@@ -23,6 +23,7 @@ import (
 	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/testutil"
 	"github.com/ameshkov/dnsstamps"
+	"github.com/masx200/dnsproxy/internal/types"
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -441,7 +442,7 @@ func TestUpstreamsInvalidBootstrap(t *testing.T) {
 		t.Run(tc.address, func(t *testing.T) {
 			t.Parallel()
 
-			var rslv ConsequentResolver
+			var rslv []*CachingResolver
 			for _, b := range tc.bootstrap {
 				r, err := NewUpstreamResolver(b, &Options{
 					Logger:  l,
@@ -452,9 +453,16 @@ func TestUpstreamsInvalidBootstrap(t *testing.T) {
 				rslv = append(rslv, NewCachingResolver(r))
 			}
 
+			// Convert slice of resolvers to a ConsequentResolver
+			var consequentResolvers []Resolver
+			for _, r := range rslv {
+				consequentResolvers = append(consequentResolvers, r)
+			}
+			consequentResolver := NewConsequentResolver(consequentResolvers...)
+
 			u, err := AddressToUpstream(tc.address, &Options{
 				Logger:    l,
-				Bootstrap: rslv,
+				Bootstrap: consequentResolver,
 				Timeout:   timeout,
 			})
 			require.NoErrorf(t, err, "failed to generate upstream from address %s", tc.address)
@@ -500,11 +508,11 @@ func TestAddressToUpstream_StaticResolver(t *testing.T) {
 		name    string
 		address string
 	}{{
-		rslv:    StaticResolver{netutil.IPv4Localhost()},
+		rslv:    types.NewStaticResolver([]netip.Addr{netutil.IPv4Localhost()}),
 		name:    "dot",
 		address: fmt.Sprintf("tls://some.dns.server:%d", dotSrv.port),
 	}, {
-		rslv:    StaticResolver{netutil.IPv4Localhost()},
+		rslv:    types.NewStaticResolver([]netip.Addr{netutil.IPv4Localhost()}),
 		name:    "doh",
 		address: fmt.Sprintf("https://some.dns.server:%s/dns-query", dohPort),
 	}, {

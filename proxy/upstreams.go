@@ -97,7 +97,7 @@ func ParseUpstreamsConfig(
 		opts = &upstream.Options{}
 	}
 
-	logger := opts.Logger()
+	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}

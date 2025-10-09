@@ -75,11 +75,10 @@ func TestUpstreamDoH(t *testing.T) {
 			address := fmt.Sprintf("https://%s/dns-query", srv.addr)
 
 			var lastState tls.ConnectionState
-			opts := &Options{
-				Logger:             testLogger,
-				InsecureSkipVerify: true,
-				HTTPVersions:       tc.httpVersions,
-				VerifyConnection: func(state tls.ConnectionState) (err error) {
+			opts := NewOptions(
+				testLogger, // logger
+				nil,        // verifyServerCertificate
+				func(state tls.ConnectionState) (err error) { // verifyConnection
 					if state.NegotiatedProtocol != string(tc.expectedProtocol) {
 						return fmt.Errorf(
 							"expected %s, got %s",
@@ -90,7 +89,16 @@ func TestUpstreamDoH(t *testing.T) {
 					lastState = state
 					return nil
 				},
-			}
+				nil,             // verifyDNSCryptCertificate
+				nil,             // quicTracer
+				nil,             // rootCAs
+				nil,             // cipherSuites
+				nil,             // bootstrap
+				tc.httpVersions, // httpVersions
+				0,               // timeout
+				true,            // insecureSkipVerify
+				false,           // preferIPv6
+			)
 			u, err := AddressToUpstream(address, opts)
 			require.NoError(t, err)
 			testutil.CleanupAndRequireSuccess(t, u.Close)
@@ -184,12 +192,20 @@ func TestUpstreamDoH_raceReconnect(t *testing.T) {
 			// Create a DNS-over-HTTPS upstream that will be used for the
 			// race test.
 			address := fmt.Sprintf("https://%s/dns-query", srv.addr)
-			opts := &Options{
-				Logger:             testLogger,
-				InsecureSkipVerify: true,
-				HTTPVersions:       tc.httpVersions,
-				Timeout:            timeout,
-			}
+			opts := NewOptions(
+				testLogger,      // logger
+				nil,             // verifyServerCertificate
+				nil,             // verifyConnection
+				nil,             // verifyDNSCryptCertificate
+				nil,             // quicTracer
+				nil,             // rootCAs
+				nil,             // cipherSuites
+				nil,             // bootstrap
+				tc.httpVersions, // httpVersions
+				timeout,         // timeout
+				true,            // insecureSkipVerify
+				false,           // preferIPv6
+			)
 			u, err := AddressToUpstream(address, opts)
 			require.NoError(t, err)
 			testutil.CleanupAndRequireSuccess(t, u.Close)
@@ -230,12 +246,20 @@ func TestUpstreamDoH_serverRestart(t *testing.T) {
 				}).String()
 
 				var err error
-				u, err = AddressToUpstream(upsAddr, &Options{
-					Logger:             testLogger,
-					InsecureSkipVerify: true,
-					HTTPVersions:       tc.httpVersions,
-					Timeout:            100 * time.Millisecond,
-				})
+				u, err = AddressToUpstream(upsAddr, NewOptions(
+					testLogger,           // logger
+					nil,                  // verifyServerCertificate
+					nil,                  // verifyConnection
+					nil,                  // verifyDNSCryptCertificate
+					nil,                  // quicTracer
+					nil,                  // rootCAs
+					nil,                  // cipherSuites
+					nil,                  // bootstrap
+					tc.httpVersions,      // httpVersions
+					100*time.Millisecond, // timeout
+					true,                 // insecureSkipVerify
+					false,                // preferIPv6
+				))
 				require.NoError(t, err)
 
 				checkUpstream(t, u, upsAddr)
@@ -279,11 +303,20 @@ func TestUpstreamDoH_0RTT(t *testing.T) {
 	// Create a DNS-over-HTTPS upstream.
 	tracer := &quicTracer{}
 	address := fmt.Sprintf("h3://%s/dns-query", srv.addr)
-	u, err := AddressToUpstream(address, &Options{
-		Logger:             testLogger,
-		InsecureSkipVerify: true,
-		QUICTracer:         tracer.TracerForConnection,
-	})
+	u, err := AddressToUpstream(address, NewOptions(
+		testLogger,                 // logger
+		nil,                        // verifyServerCertificate
+		nil,                        // verifyConnection
+		nil,                        // verifyDNSCryptCertificate
+		tracer.TracerForConnection, // quicTracer
+		nil,                        // rootCAs
+		nil,                        // cipherSuites
+		nil,                        // bootstrap
+		nil,                        // httpVersions
+		0,                          // timeout
+		true,                       // insecureSkipVerify
+		false,                      // preferIPv6
+	))
 	require.NoError(t, err)
 	testutil.CleanupAndRequireSuccess(t, u.Close)
 

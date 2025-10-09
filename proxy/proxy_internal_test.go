@@ -228,18 +228,37 @@ func newTestUpstreamConfigWithBoot(
 ) (u *UpstreamConfig) {
 	googleRslv, err := upstream.NewUpstreamResolver(
 		"8.8.8.8:53",
-		&upstream.Options{
-			Logger:  slogutil.NewDiscardLogger(),
-			Timeout: timeout,
-		},
+		upstream.NewOptions(
+			slogutil.NewDiscardLogger(), // logger
+			nil,                         // verifyServerCertificate
+			nil,                         // verifyConnection
+			nil,                         // verifyDNSCryptCertificate
+			nil,                         // quicTracer
+			nil,                         // rootCAs
+			nil,                         // cipherSuites
+			nil,                         // bootstrap
+			nil,                         // httpVersions
+			timeout,                     // timeout
+			false,                       // insecureSkipVerify
+			false,                       // preferIPv6
+		),
 	)
 	require.NoError(t, err)
 
-	upsConf, err := ParseUpstreamsConfig(addrs, &upstream.Options{
-		Logger:    slogutil.NewDiscardLogger(),
-		Timeout:   timeout,
-		Bootstrap: upstream.NewCachingResolver(googleRslv),
-	})
+	upsConf, err := ParseUpstreamsConfig(addrs, upstream.NewOptions(
+		slogutil.NewDiscardLogger(),             // logger
+		nil,                                     // verifyServerCertificate
+		nil,                                     // verifyConnection
+		nil,                                     // verifyDNSCryptCertificate
+		nil,                                     // quicTracer
+		nil,                                     // rootCAs
+		nil,                                     // cipherSuites
+		upstream.NewCachingResolver(googleRslv), // bootstrap
+		nil,                                     // httpVersions
+		timeout,                                 // timeout
+		false,                                   // insecureSkipVerify
+		false,                                   // preferIPv6
+	))
 	require.NoError(t, err)
 
 	return upsConf
@@ -254,10 +273,20 @@ func newTestUpstreamConfig(
 ) (u *UpstreamConfig) {
 	tb.Helper()
 
-	upsConf, err := ParseUpstreamsConfig(addrs, &upstream.Options{
-		Logger:  slogutil.NewDiscardLogger(),
-		Timeout: timeout,
-	})
+	upsConf, err := ParseUpstreamsConfig(addrs, upstream.NewOptions(
+		slogutil.NewDiscardLogger(), // logger
+		nil,                         // verifyServerCertificate
+		nil,                         // verifyConnection
+		nil,                         // verifyDNSCryptCertificate
+		nil,                         // quicTracer
+		nil,                         // rootCAs
+		nil,                         // cipherSuites
+		nil,                         // bootstrap
+		nil,                         // httpVersions
+		timeout,                     // timeout
+		false,                       // insecureSkipVerify
+		false,                       // preferIPv6
+	))
 	require.NoError(tb, err)
 
 	return upsConf
@@ -827,17 +856,37 @@ func TestFallback(t *testing.T) {
 func TestFallbackFromInvalidBootstrap(t *testing.T) {
 	t.Parallel()
 
-	invalidRslv, err := upstream.NewUpstreamResolver("8.8.8.8:555", &upstream.Options{
-		Logger:  slogutil.NewDiscardLogger(),
-		Timeout: testTimeout,
-	})
+	invalidRslv, err := upstream.NewUpstreamResolver("8.8.8.8:555", upstream.NewOptions(
+		slogutil.NewDiscardLogger(), // logger
+		nil,                         // verifyServerCertificate
+		nil,                         // verifyConnection
+		nil,                         // verifyDNSCryptCertificate
+		nil,                         // quicTracer
+		nil,                         // rootCAs
+		nil,                         // cipherSuites
+		nil,                         // bootstrap
+		nil,                         // httpVersions
+		testTimeout,                 // timeout
+		false,                       // insecureSkipVerify
+		false,                       // preferIPv6
+	))
 	require.NoError(t, err)
 
 	// Prepare the proxy server
-	upsConf, err := ParseUpstreamsConfig([]string{"tls://dns.adguard.com"}, &upstream.Options{
-		Logger:    slogutil.NewDiscardLogger(),
-		Bootstrap: invalidRslv, Timeout: testTimeout,
-	})
+	upsConf, err := ParseUpstreamsConfig([]string{"tls://dns.adguard.com"}, upstream.NewOptions(
+		slogutil.NewDiscardLogger(), // logger
+		nil,                         // verifyServerCertificate
+		nil,                         // verifyConnection
+		nil,                         // verifyDNSCryptCertificate
+		nil,                         // quicTracer
+		nil,                         // rootCAs
+		nil,                         // cipherSuites
+		invalidRslv,                 // bootstrap
+		nil,                         // httpVersions
+		testTimeout,                 // timeout
+		false,                       // insecureSkipVerify
+		false,                       // preferIPv6
+	))
 	require.NoError(t, err)
 
 	dnsProxy := mustNew(t, &Config{

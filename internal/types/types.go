@@ -4,6 +4,8 @@ package types
 import (
 	"context"
 	"net/netip"
+
+	"github.com/AdguardTeam/golibs/errors"
 )
 
 // Resolver resolves the hostnames to IP addresses.
@@ -73,6 +75,10 @@ func NewParallelResolver(resolvers ...Resolver) *ParallelResolver {
 
 // LookupNetIP implements the Resolver interface for ParallelResolver.
 func (r *ParallelResolver) LookupNetIP(ctx context.Context, network Network, host string) ([]netip.Addr, error) {
+	if len(r.resolvers) == 0 {
+		return nil, errors.Error("no resolvers specified")
+	}
+
 	type result struct {
 		addrs []netip.Addr
 		err   error
@@ -151,7 +157,7 @@ type multiError struct {
 }
 
 func (e *multiError) Error() string {
-	return "multiple errors: " + joinStrings(e.errs, "; ")
+	return joinStrings(e.errs, "\n")
 }
 
 func (e *multiError) Unwrap() []error {

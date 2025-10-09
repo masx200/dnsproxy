@@ -32,15 +32,23 @@ func TestUpstreamDoQ(t *testing.T) {
 
 	address := fmt.Sprintf("quic://%s", srv.addr)
 	var lastState tls.ConnectionState
-	opts := &Options{
-		Logger: testLogger,
-		VerifyConnection: func(state tls.ConnectionState) error {
+	opts := NewOptions(
+		testLogger, // logger
+		nil,        // verifyServerCertificate
+		func(state tls.ConnectionState) error { // verifyConnection
 			lastState = state
-
 			return nil
 		},
-		RootCAs: rootCAs,
-	}
+		nil,     // verifyDNSCryptCertificate
+		nil,     // quicTracer
+		rootCAs, // rootCAs
+		nil,     // cipherSuites
+		nil,     // bootstrap
+		nil,     // httpVersions
+		0,       // timeout
+		false,   // insecureSkipVerify
+		false,   // preferIPv6
+	)
 	u, err := AddressToUpstream(address, opts)
 	require.NoError(t, err)
 	testutil.CleanupAndRequireSuccess(t, u.Close)
@@ -88,10 +96,20 @@ func TestUpstream_Exchange_quicServerCloseConn(t *testing.T) {
 
 	// Create a DNS-over-QUIC upstream.
 	address := fmt.Sprintf("quic://%s", srv.addr)
-	u, err := AddressToUpstream(address, &Options{
-		Logger:  testLogger,
-		RootCAs: rootCAs,
-	})
+	u, err := AddressToUpstream(address, NewOptions(
+		testLogger, // logger
+		nil,        // verifyServerCertificate
+		nil,        // verifyConnection
+		nil,        // verifyDNSCryptCertificate
+		nil,        // quicTracer
+		rootCAs,    // rootCAs
+		nil,        // cipherSuites
+		nil,        // bootstrap
+		nil,        // httpVersions
+		0,          // timeout
+		false,      // insecureSkipVerify
+		false,      // preferIPv6
+	))
 
 	require.NoError(t, err)
 	testutil.CleanupAndRequireSuccess(t, u.Close)
@@ -153,11 +171,20 @@ func TestUpstreamDoQ_serverRestart(t *testing.T) {
 		var err error
 		u, err = AddressToUpstream(
 			upsStr,
-			&Options{
-				Logger:  testLogger,
-				RootCAs: rootCAs,
-				Timeout: 100 * time.Millisecond,
-			},
+			NewOptions(
+				testLogger,           // logger
+				nil,                  // verifyServerCertificate
+				nil,                  // verifyConnection
+				nil,                  // verifyDNSCryptCertificate
+				nil,                  // quicTracer
+				rootCAs,              // rootCAs
+				nil,                  // cipherSuites
+				nil,                  // bootstrap
+				nil,                  // httpVersions
+				100*time.Millisecond, // timeout
+				false,                // insecureSkipVerify
+				false,                // preferIPv6
+			),
 		)
 		require.NoError(t, err)
 
@@ -190,11 +217,20 @@ func TestUpstreamDoQ_0RTT(t *testing.T) {
 
 	tracer := &quicTracer{}
 	address := fmt.Sprintf("quic://%s", srv.addr)
-	u, err := AddressToUpstream(address, &Options{
-		Logger:     testLogger,
-		QUICTracer: tracer.TracerForConnection,
-		RootCAs:    rootCAs,
-	})
+	u, err := AddressToUpstream(address, NewOptions(
+		testLogger,                 // logger
+		nil,                        // verifyServerCertificate
+		nil,                        // verifyConnection
+		nil,                        // verifyDNSCryptCertificate
+		tracer.TracerForConnection, // quicTracer
+		rootCAs,                    // rootCAs
+		nil,                        // cipherSuites
+		nil,                        // bootstrap
+		nil,                        // httpVersions
+		0,                          // timeout
+		false,                      // insecureSkipVerify
+		false,                      // preferIPv6
+	))
 	require.NoError(t, err)
 	testutil.CleanupAndRequireSuccess(t, u.Close)
 

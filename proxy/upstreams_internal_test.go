@@ -275,12 +275,20 @@ func TestValidatePrivateConfig(t *testing.T) {
 
 func TestGetUpstreamsForDomainWithoutDuplicates(t *testing.T) {
 	upstreams := []string{"[/example.com/]1.1.1.1", "[/example.org/]1.1.1.1"}
-	config, err := ParseUpstreamsConfig(upstreams, &upstream.Options{
-		Logger:             slogutil.NewDiscardLogger(),
-		InsecureSkipVerify: false,
-		Bootstrap:          nil,
-		Timeout:            testTimeout,
-	})
+	config, err := ParseUpstreamsConfig(upstreams, upstream.NewOptions(
+		slogutil.NewDiscardLogger(), // logger
+		nil,                         // verifyServerCertificate
+		nil,                         // verifyConnection
+		nil,                         // verifyDNSCryptCertificate
+		nil,                         // quicTracer
+		nil,                         // rootCAs
+		nil,                         // cipherSuites
+		nil,                         // bootstrap
+		nil,                         // httpVersions
+		testTimeout,                 // timeout
+		false,                       // insecureSkipVerify
+		false,                       // preferIPv6
+	))
 	assert.NoError(t, err)
 	assert.Len(t, config.Upstreams, 0)
 	assert.Len(t, config.DomainReservedUpstreams, 2)
@@ -448,12 +456,20 @@ func BenchmarkGetUpstreamsForDomain(b *testing.B) {
 		"192.0.2.1",
 	}
 
-	config, _ := ParseUpstreamsConfig(upstreamsAddrs, &upstream.Options{
-		Logger:             slogutil.NewDiscardLogger(),
-		InsecureSkipVerify: false,
-		Bootstrap:          nil,
-		Timeout:            testTimeout,
-	})
+	config, _ := ParseUpstreamsConfig(upstreamsAddrs, upstream.NewOptions(
+		slogutil.NewDiscardLogger(), // logger
+		nil,                         // verifyServerCertificate
+		nil,                         // verifyConnection
+		nil,                         // verifyDNSCryptCertificate
+		nil,                         // quicTracer
+		nil,                         // rootCAs
+		nil,                         // cipherSuites
+		nil,                         // bootstrap
+		nil,                         // httpVersions
+		testTimeout,                 // timeout
+		false,                       // insecureSkipVerify
+		false,                       // preferIPv6
+	))
 
 	domains := []string{
 		"www.google.com.",

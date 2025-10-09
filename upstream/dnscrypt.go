@@ -43,9 +43,9 @@ func newDNSCrypt(addr *url.URL, opts *Options) (u *dnsCrypt) {
 	return &dnsCrypt{
 		mu:         &sync.RWMutex{},
 		addr:       addr,
-		logger:     opts.Logger(),
-		verifyCert: opts.VerifyDNSCryptCertificate(),
-		timeout:    opts.Timeout(),
+		logger:     opts.Logger,
+		verifyCert: opts.VerifyDNSCryptCertificate,
+		timeout:    opts.Timeout,
 	}
 }
 

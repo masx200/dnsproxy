@@ -96,7 +96,7 @@ func newDoH(addr *url.URL, opts *Options) (u Upstream, err error) {
 	if addr.Scheme == "h3" {
 		addr.Scheme = "https"
 		httpVersions = []HTTPVersion{HTTPVersion3}
-	} else if httpVersions = opts.HTTPVersions(); len(opts.HTTPVersions()) == 0 {
+	} else if httpVersions = opts.HTTPVersions; len(opts.HTTPVersions) == 0 {
 		httpVersions = DefaultHTTPVersions
 	}
 
@@ -106,13 +106,13 @@ func newDoH(addr *url.URL, opts *Options) (u Upstream, err error) {
 		quicConf: &quic.Config{
 			KeepAlivePeriod: QUICKeepAlivePeriod,
 			TokenStore:      newQUICTokenStore(),
-			Tracer:          opts.QUICTracer(),
+			Tracer:          opts.QUICTracer,
 		},
 		quicConfMu: &sync.Mutex{},
 		tlsConf: &tls.Config{
 			ServerName:   addr.Hostname(),
-			RootCAs:      opts.RootCAs(),
-			CipherSuites: opts.CipherSuites(),
+			RootCAs:      opts.RootCAs,
+			CipherSuites: opts.CipherSuites,
 			// Use the default capacity for the LRU cache.  It may be useful to
 			// store several caches since the user may be routed to different
 			// servers in case there's load balancing on the server-side.
@@ -120,15 +120,15 @@ func newDoH(addr *url.URL, opts *Options) (u Upstream, err error) {
 			MinVersion:         tls.VersionTLS12,
 			// #nosec G402 -- TLS certificate verification could be disabled by
 			// configuration.
-			InsecureSkipVerify:    opts.InsecureSkipVerify(),
-			VerifyPeerCertificate: opts.VerifyServerCertificate(),
-			VerifyConnection:      opts.VerifyConnection(),
+			InsecureSkipVerify:    opts.InsecureSkipVerify,
+			VerifyPeerCertificate: opts.VerifyServerCertificate,
+			VerifyConnection:      opts.VerifyConnection,
 		},
 		clientMu:     &sync.Mutex{},
-		logger:       opts.Logger(),
+		logger:       opts.Logger,
 		addrRedacted: addr.Redacted(),
 		opts:         opts,
-		timeout:      opts.Timeout(),
+		timeout:      opts.Timeout,
 	}
 	for _, v := range httpVersions {
 		ups.tlsConf.NextProtos = append(ups.tlsConf.NextProtos, string(v))

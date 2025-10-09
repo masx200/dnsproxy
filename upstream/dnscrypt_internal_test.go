@@ -93,10 +93,20 @@ func TestUpstreamDNSCrypt(t *testing.T) {
 
 	// AdGuard DNS (DNSCrypt)
 	address := "sdns://AQMAAAAAAAAAETk0LjE0MC4xNC4xNDo1NDQzINErR_JS3PLCu_iZEIbq95zkSV2LFsigxDIuUso_OQhzIjIuZG5zY3J5cHQuZGVmYXVsdC5uczEuYWRndWFyZC5jb20"
-	u, err := AddressToUpstream(address, &Options{
-		Logger:  testLogger,
-		Timeout: dialTimeout,
-	})
+	u, err := AddressToUpstream(address, NewOptions(
+		testLogger,  // logger
+		nil,         // verifyServerCertificate
+		nil,         // verifyConnection
+		nil,         // verifyDNSCryptCertificate
+		nil,         // quicTracer
+		nil,         // rootCAs
+		nil,         // cipherSuites
+		nil,         // bootstrap
+		nil,         // httpVersions
+		dialTimeout, // timeout
+		false,       // insecureSkipVerify
+		false,       // preferIPv6
+	))
 	require.NoError(t, err)
 	testutil.CleanupAndRequireSuccess(t, u.Close)
 
@@ -139,10 +149,20 @@ func TestDNSCrypt_Exchange_truncated(t *testing.T) {
 	})
 	srvStamp := startTestDNSCryptServer(t, rc, h)
 
-	u, err := AddressToUpstream(srvStamp.String(), &Options{
-		Logger:  testLogger,
-		Timeout: timeout,
-	})
+	u, err := AddressToUpstream(srvStamp.String(), NewOptions(
+		testLogger, // logger
+		nil,        // verifyServerCertificate
+		nil,        // verifyConnection
+		nil,        // verifyDNSCryptCertificate
+		nil,        // quicTracer
+		nil,        // rootCAs
+		nil,        // cipherSuites
+		nil,        // bootstrap
+		nil,        // httpVersions
+		timeout,    // timeout
+		false,      // insecureSkipVerify
+		false,      // preferIPv6
+	))
 	require.NoError(t, err)
 	testutil.CleanupAndRequireSuccess(t, u.Close)
 
@@ -171,10 +191,20 @@ func TestDNSCrypt_Exchange_deadline(t *testing.T) {
 	srvStamp := startTestDNSCryptServer(t, rc, h)
 
 	// Use a shorter timeout to speed up the test.
-	u, err := AddressToUpstream(srvStamp.String(), &Options{
-		Logger:  testLogger,
-		Timeout: 100 * time.Millisecond,
-	})
+	u, err := AddressToUpstream(srvStamp.String(), NewOptions(
+		testLogger,           // logger
+		nil,                  // verifyServerCertificate
+		nil,                  // verifyConnection
+		nil,                  // verifyDNSCryptCertificate
+		nil,                  // quicTracer
+		nil,                  // rootCAs
+		nil,                  // cipherSuites
+		nil,                  // bootstrap
+		nil,                  // httpVersions
+		100*time.Millisecond, // timeout
+		false,                // insecureSkipVerify
+		false,                // preferIPv6
+	))
 	require.NoError(t, err)
 	testutil.CleanupAndRequireSuccess(t, u.Close)
 
@@ -202,10 +232,20 @@ func TestDNSCrypt_Exchange_dialFail(t *testing.T) {
 		srvStamp := startTestDNSCryptServer(t, rc, h)
 
 		// Use a shorter timeout to speed up the test.
-		u, err = AddressToUpstream(srvStamp.String(), &Options{
-			Logger:  testLogger,
-			Timeout: 100 * time.Millisecond,
-		})
+		u, err = AddressToUpstream(srvStamp.String(), NewOptions(
+			testLogger,           // logger
+			nil,                  // verifyServerCertificate
+			nil,                  // verifyConnection
+			nil,                  // verifyDNSCryptCertificate
+			nil,                  // quicTracer
+			nil,                  // rootCAs
+			nil,                  // cipherSuites
+			nil,                  // bootstrap
+			nil,                  // httpVersions
+			100*time.Millisecond, // timeout
+			false,                // insecureSkipVerify
+			false,                // preferIPv6
+		))
 		require.NoError(t, err)
 	}))
 
@@ -225,13 +265,22 @@ func TestDNSCrypt_Exchange_dialFail(t *testing.T) {
 		srvStamp := startTestDNSCryptServer(t, rc, h)
 
 		// Use a shorter timeout to speed up the test.
-		u, err = AddressToUpstream(srvStamp.String(), &Options{
-			Logger:  testLogger,
-			Timeout: 100 * time.Millisecond,
-			VerifyDNSCryptCertificate: func(cert *dnscrypt.Cert) (err error) {
+		u, err = AddressToUpstream(srvStamp.String(), NewOptions(
+			testLogger, // logger
+			nil,        // verifyServerCertificate
+			nil,        // verifyConnection
+			func(cert *dnscrypt.Cert) (err error) { // verifyDNSCryptCertificate
 				return validationErr
 			},
-		})
+			nil,                  // quicTracer
+			nil,                  // rootCAs
+			nil,                  // cipherSuites
+			nil,                  // bootstrap
+			nil,                  // httpVersions
+			100*time.Millisecond, // timeout
+			false,                // insecureSkipVerify
+			false,                // preferIPv6
+		))
 		require.NoError(t, err)
 
 		var res *dns.Msg

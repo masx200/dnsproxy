@@ -15,10 +15,20 @@ func TestLookupNetIP(t *testing.T) {
 	// Use AdGuard DNS here.
 	dnsUpstream, err := upstream.AddressToUpstream(
 		"94.140.14.14",
-		&upstream.Options{
-			Logger:  slogutil.NewDiscardLogger(),
-			Timeout: defaultTimeout,
-		},
+		upstream.NewOptions(
+			slogutil.NewDiscardLogger(), // logger
+			nil,                         // verifyServerCertificate
+			nil,                         // verifyConnection
+			nil,                         // verifyDNSCryptCertificate
+			nil,                         // quicTracer
+			nil,                         // rootCAs
+			nil,                         // cipherSuites
+			nil,                         // bootstrap
+			nil,                         // httpVersions
+			defaultTimeout,              // timeout
+			false,                       // insecureSkipVerify
+			false,                       // preferIPv6
+		),
 	)
 	require.NoError(t, err)
 

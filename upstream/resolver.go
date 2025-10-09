@@ -72,10 +72,10 @@ func NewUpstreamResolver(resolverAddress string, opts *Options) (r *UpstreamReso
 
 	// TODO(ameshkov):  Aren't other options needed here?
 	if opts != nil {
-		upsOpts.timeout = opts.timeout
-		upsOpts.verifyServerCertificate = opts.verifyServerCertificate
-		upsOpts.preferIPv6 = opts.preferIPv6
-		upsOpts.logger = opts.logger
+		upsOpts.Timeout = opts.Timeout
+		upsOpts.VerifyServerCertificate = opts.VerifyServerCertificate
+		upsOpts.PreferIPv6 = opts.PreferIPv6
+		upsOpts.Logger = opts.Logger
 	}
 
 	ups, err := AddressToUpstream(resolverAddress, upsOpts)

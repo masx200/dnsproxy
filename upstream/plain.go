@@ -64,11 +64,11 @@ func newPlain(addr *url.URL, opts *Options) (u *plainDNS, err error) {
 
 	return &plainDNS{
 		addr:      addr,
-		logger:    opts.Logger(),
+		logger:    opts.Logger,
 		getDialer: newDialerInitializer(addr, opts),
 		net:       addr.Scheme,
 		opts:      opts,
-		timeout:   opts.Timeout(),
+		timeout:   opts.Timeout,
 	}, nil
 }
 
