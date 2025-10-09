@@ -801,15 +801,29 @@ go test -v ./...
 
 #### 1. 统一连接管理接口
 ```go
-type UpstreamOptions interface {
-    // 配置访问方法
-    GetLogger() *slog.Logger
-    GetTimeout() time.Duration
-    // ... 其他getter方法
 
-    // 统一连接管理
-    DialTCP(ctx context.Context, addr string) (net.Conn, error)
-    DialUDP(ctx context.Context, addr string) (*net.UDPConn, error)
+type UpstreamOptions interface {
+	// Getter methods for Options fields
+	GetLogger() *slog.Logger
+	GetVerifyServerCertificate() func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+	GetVerifyConnection() func(state tls.ConnectionState) error
+	GetVerifyDNSCryptCertificate() func(cert *dnscrypt.Cert) error
+	GetQUICTracer() QUICTraceFunc
+	GetRootCAs() *x509.CertPool
+	GetCipherSuites() []uint16
+	GetBootstrap() Resolver
+	GetHTTPVersions() []HTTPVersion
+	GetTimeout() time.Duration
+	GetInsecureSkipVerify() bool
+	GetPreferIPv6() bool
+
+	// DialTCP creates a TCP connection to the specified address using the
+	// configuration from this UpstreamOptions.
+	DialTCP(ctx context.Context, addr string) (net.Conn, error)
+
+	// DialUDP creates a UDP connection to the specified address using the
+	// configuration from this UpstreamOptions.
+	DialUDP(ctx context.Context, addr string) (*net.UDPConn, error)
 }
 ```
 
