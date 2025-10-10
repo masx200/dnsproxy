@@ -99,7 +99,7 @@ type dnsOverQUIC struct {
 }
 
 // newDoQ returns the DNS-over-QUIC Upstream.
-func newDoQ(addr *url.URL, opts *Options) (u Upstream, err error) {
+func newDoQ(addr *url.URL, opts UpstreamOptions) (u Upstream, err error) {
 	addPort(addr, defaultPortDoQ)
 
 	u = &dnsOverQUIC{
@@ -108,12 +108,12 @@ func newDoQ(addr *url.URL, opts *Options) (u Upstream, err error) {
 		quicConfig: &quic.Config{
 			KeepAlivePeriod: QUICKeepAlivePeriod,
 			TokenStore:      newQUICTokenStore(),
-			Tracer:          opts.QUICTracer,
+			Tracer:          opts.GetQUICTracer(),
 		},
 		tlsConf: &tls.Config{
 			ServerName:   addr.Hostname(),
-			RootCAs:      opts.RootCAs,
-			CipherSuites: opts.CipherSuites,
+			RootCAs:      opts.GetRootCAs(),
+			CipherSuites: opts.GetCipherSuites(),
 			// Use the default capacity for the LRU cache.  It may be useful to
 			// store several caches since the user may be routed to different
 			// servers in case there's load balancing on the server-side.
@@ -121,17 +121,17 @@ func newDoQ(addr *url.URL, opts *Options) (u Upstream, err error) {
 			MinVersion:         tls.VersionTLS12,
 			// #nosec G402 -- TLS certificate verification could be disabled by
 			// configuration.
-			InsecureSkipVerify:    opts.InsecureSkipVerify,
-			VerifyPeerCertificate: opts.VerifyServerCertificate,
-			VerifyConnection:      opts.VerifyConnection,
+			InsecureSkipVerify:    opts.GetInsecureSkipVerify(),
+			VerifyPeerCertificate: opts.GetVerifyServerCertificate(),
+			VerifyConnection:      opts.GetVerifyConnection(),
 			NextProtos:            compatProtoDQ,
 		},
 		quicConfigMu: &sync.Mutex{},
 		connMu:       &sync.Mutex{},
 		bytesPoolMu:  &sync.Mutex{},
-		logger:       opts.Logger,
+		logger:       opts.GetLogger(),
 		opts:         opts,
-		timeout:      opts.Timeout,
+		timeout:      opts.GetTimeout(),
 	}
 
 	runtime.SetFinalizer(u, (*dnsOverQUIC).Close)

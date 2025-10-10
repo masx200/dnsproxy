@@ -187,7 +187,7 @@ func TestCachingResolver_staleness(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
 				if tc.name != "both" {
-					t.Skip(`TODO(e.burkov):  Bootstrap now only uses "ip" network, see TODO there.`)
+					t.Fatal(`TODO(e.burkov):  Bootstrap now only uses "ip" network, see TODO there.`)
 				}
 
 				res, err := r.LookupNetIP(context.Background(), tc.network, fqdn)

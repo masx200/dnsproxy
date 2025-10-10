@@ -79,6 +79,12 @@ type UpstreamOptions interface {
 	// DialUDP creates a UDP connection to the specified address using the
 	// configuration from this UpstreamOptions.
 	DialUDP(ctx context.Context, addr string) (*net.UDPConn, error)
+
+	// Setter methods for mutable fields
+	SetLogger(logger *slog.Logger)
+	SetBootstrap(bootstrap Resolver)
+
+	Clone() (clone UpstreamOptions)
 }
 
 // Options for AddressToUpstream func.  With these options we can configure the
@@ -193,6 +199,16 @@ func (o *Options) GetVerifyServerCertificate() func(rawCerts [][]byte, verifiedC
 	return o.VerifyServerCertificate
 }
 
+// SetLogger implements UpstreamOptions.
+func (o *Options) SetLogger(logger *slog.Logger) {
+	o.Logger = logger
+}
+
+// SetBootstrap implements UpstreamOptions.
+func (o *Options) SetBootstrap(bootstrap Resolver) {
+	o.Bootstrap = bootstrap
+}
+
 func init() {
 	var _ UpstreamOptions = NewOptions(nil, nil, nil, nil, nil, nil, nil, nil, nil, 0, false, false)
 }
@@ -219,7 +235,7 @@ func (o *Options) DialUDP(ctx context.Context, addr string) (*net.UDPConn, error
 }
 
 // Clone copies o to a new struct.  Note, that this is not a deep clone.
-func (o *Options) Clone() (clone *Options) {
+func (o *Options) Clone() (clone UpstreamOptions) {
 	return &Options{
 		Bootstrap:                 o.Bootstrap,
 		Timeout:                   o.Timeout,
@@ -325,13 +341,17 @@ const (
 // valid.
 //
 // TODO(e.burkov):  Clone opts?
-func AddressToUpstream(addr string, opts *Options) (u Upstream, err error) {
+func AddressToUpstream(addr string, opts UpstreamOptions) (u Upstream, err error) {
+	// Check if opts is nil or contains a nil pointer
 	if opts == nil {
-		opts = &Options{}
-	}
-
-	if opts.Logger == nil {
-		opts.Logger = slog.Default()
+		opts = NewOptions(slog.Default(), nil, nil, nil, nil, nil, nil, nil, nil, 0, false, false)
+	} else {
+		// Safely check if opts contains a nil pointer by using type assertion
+		if optStruct, ok := opts.(*Options); ok && optStruct == nil {
+			opts = NewOptions(slog.Default(), nil, nil, nil, nil, nil, nil, nil, nil, 0, false, false)
+		} else if ok && optStruct.Logger == nil {
+			optStruct.Logger = slog.Default()
+		}
 	}
 
 	var uu *url.URL
@@ -399,7 +419,7 @@ func validateUpstreamURL(u *url.URL) (err error) {
 }
 
 // urlToUpstream converts uu to an Upstream using opts.
-func urlToUpstream(uu *url.URL, opts *Options) (u Upstream, err error) {
+func urlToUpstream(uu *url.URL, opts UpstreamOptions) (u Upstream, err error) {
 	switch sch := uu.Scheme; sch {
 	case "sdns":
 		return parseStamp(uu, opts)
@@ -417,7 +437,7 @@ func urlToUpstream(uu *url.URL, opts *Options) (u Upstream, err error) {
 }
 
 // parseStamp converts a DNS stamp to an Upstream.
-func parseStamp(upsURL *url.URL, opts *Options) (u Upstream, err error) {
+func parseStamp(upsURL *url.URL, opts UpstreamOptions) (u Upstream, err error) {
 	stamp, err := dnsstamps.NewServerStampFromString(upsURL.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", upsURL, err)
@@ -436,7 +456,7 @@ func parseStamp(upsURL *url.URL, opts *Options) (u Upstream, err error) {
 			return nil, fmt.Errorf("invalid server stamp address %s", stamp.ServerAddrStr)
 		}
 
-		opts.Bootstrap = types.NewStaticResolver([]netip.Addr{ip})
+		opts.SetBootstrap(types.NewStaticResolver([]netip.Addr{ip}))
 	}
 
 	switch stamp.Proto {
@@ -522,7 +542,7 @@ type DialerInitializer func() (handler DialHandler, err error)
 
 // newDialerInitializer creates an initializer of the dialer that will dial the
 // addresses resolved from u using opts.
-func newDialerInitializer(u *url.URL, opts *Options) (di DialerInitializer) {
+func newDialerInitializer(u *url.URL, opts UpstreamOptions) (di DialerInitializer) {
 
 	if netutil.IsValidIPPortString(u.Host) {
 		// Don't resolve the address of the server since it's already an IP.
@@ -537,7 +557,7 @@ func newDialerInitializer(u *url.URL, opts *Options) (di DialerInitializer) {
 				return udpConn, nil
 			}
 			// Fallback for other network types
-			dialer := &net.Dialer{Timeout: opts.Timeout}
+			dialer := &net.Dialer{Timeout: opts.GetTimeout()}
 			return dialer.DialContext(ctx, network, u.Host)
 		}
 
@@ -547,7 +567,7 @@ func newDialerInitializer(u *url.URL, opts *Options) (di DialerInitializer) {
 	}
 
 	// For domain names, we'll use the resolver to get IPs
-	boot := opts.Bootstrap
+	boot := opts.GetBootstrap()
 	if boot == nil {
 		// Use the default resolver for bootstrapping.
 		boot = net.DefaultResolver
@@ -590,7 +610,7 @@ func newDialerInitializer(u *url.URL, opts *Options) (di DialerInitializer) {
 					conn = udpConn
 				} else {
 					// Fallback for other network types
-					dialer := &net.Dialer{Timeout: opts.Timeout}
+					dialer := &net.Dialer{Timeout: opts.GetTimeout()}
 					conn, err = dialer.DialContext(ctx, network, targetAddr)
 				}
 

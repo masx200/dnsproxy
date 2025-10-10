@@ -54,7 +54,7 @@ type dnsOverTLS struct {
 }
 
 // newDoT returns the DNS-over-TLS Upstream.
-func newDoT(addr *url.URL, opts *Options) (ups Upstream, err error) {
+func newDoT(addr *url.URL, opts UpstreamOptions) (ups Upstream, err error) {
 	addPort(addr, defaultPortDoT)
 
 	tlsUps := &dnsOverTLS{
@@ -62,8 +62,8 @@ func newDoT(addr *url.URL, opts *Options) (ups Upstream, err error) {
 		getDialer: newDialerInitializer(addr, opts),
 		tlsConf: &tls.Config{
 			ServerName:   addr.Hostname(),
-			RootCAs:      opts.RootCAs,
-			CipherSuites: opts.CipherSuites,
+			RootCAs:      opts.GetRootCAs(),
+			CipherSuites: opts.GetCipherSuites(),
 			// Use the default capacity for the LRU cache.  It may be useful to
 			// store several caches since the user may be routed to different
 			// servers in case there's load balancing on the server-side.
@@ -71,12 +71,12 @@ func newDoT(addr *url.URL, opts *Options) (ups Upstream, err error) {
 			MinVersion:         tls.VersionTLS12,
 			// #nosec G402 -- TLS certificate verification could be disabled by
 			// configuration.
-			InsecureSkipVerify:    opts.InsecureSkipVerify,
-			VerifyPeerCertificate: opts.VerifyServerCertificate,
-			VerifyConnection:      opts.VerifyConnection,
+			InsecureSkipVerify:    opts.GetInsecureSkipVerify(),
+			VerifyPeerCertificate: opts.GetVerifyServerCertificate(),
+			VerifyConnection:      opts.GetVerifyConnection(),
 		},
 		connsMu: &sync.Mutex{},
-		logger:  opts.Logger,
+		logger:  opts.GetLogger(),
 		opts:    opts,
 	}
 

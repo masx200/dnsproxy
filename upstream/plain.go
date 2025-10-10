@@ -52,7 +52,7 @@ type plainDNS struct {
 
 // newPlain returns the plain DNS Upstream.  addr.Scheme should be either "udp"
 // or "tcp".
-func newPlain(addr *url.URL, opts *Options) (u *plainDNS, err error) {
+func newPlain(addr *url.URL, opts UpstreamOptions) (u *plainDNS, err error) {
 	switch addr.Scheme {
 	case networkUDP, networkTCP:
 		// Go on.
@@ -64,11 +64,11 @@ func newPlain(addr *url.URL, opts *Options) (u *plainDNS, err error) {
 
 	return &plainDNS{
 		addr:      addr,
-		logger:    opts.Logger,
+		logger:    opts.GetLogger(),
 		getDialer: newDialerInitializer(addr, opts),
 		net:       addr.Scheme,
 		opts:      opts,
-		timeout:   opts.Timeout,
+		timeout:   opts.GetTimeout(),
 	}, nil
 }
 

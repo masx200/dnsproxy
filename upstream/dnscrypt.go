@@ -39,13 +39,13 @@ type dnsCrypt struct {
 }
 
 // newDNSCrypt returns a new DNSCrypt Upstream.
-func newDNSCrypt(addr *url.URL, opts *Options) (u *dnsCrypt) {
+func newDNSCrypt(addr *url.URL, opts UpstreamOptions) (u *dnsCrypt) {
 	return &dnsCrypt{
 		mu:         &sync.RWMutex{},
 		addr:       addr,
-		logger:     opts.Logger,
-		verifyCert: opts.VerifyDNSCryptCertificate,
-		timeout:    opts.Timeout,
+		logger:     opts.GetLogger(),
+		verifyCert: opts.GetVerifyDNSCryptCertificate(),
+		timeout:    opts.GetTimeout(),
 	}
 }
 

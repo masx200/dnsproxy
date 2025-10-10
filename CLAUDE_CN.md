@@ -263,6 +263,12 @@ type UpstreamOptions interface {
 	// DialUDP creates a UDP connection to the specified address using the
 	// configuration from this UpstreamOptions.
 	DialUDP(ctx context.Context, addr string) (*net.UDPConn, error)
+
+	// Setter methods for mutable fields
+	SetLogger(logger *slog.Logger)
+	SetBootstrap(bootstrap Resolver)
+
+	Clone() (clone UpstreamOptions)
 }
 ```
 
