@@ -526,8 +526,18 @@ func newDialerInitializer(u *url.URL, opts *Options) (di DialerInitializer) {
 
 	if netutil.IsValidIPPortString(u.Host) {
 		// Don't resolve the address of the server since it's already an IP.
-		dialer := &net.Dialer{Timeout: opts.Timeout}
 		handler := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if network == "tcp" || network == "tcp4" || network == "tcp6" {
+				return opts.DialTCP(ctx, u.Host)
+			} else if network == "udp" || network == "udp4" || network == "udp6" {
+				udpConn, err := opts.DialUDP(ctx, u.Host)
+				if err != nil {
+					return nil, err
+				}
+				return udpConn, nil
+			}
+			// Fallback for other network types
+			dialer := &net.Dialer{Timeout: opts.Timeout}
 			return dialer.DialContext(ctx, network, u.Host)
 		}
 
@@ -565,9 +575,25 @@ func newDialerInitializer(u *url.URL, opts *Options) (di DialerInitializer) {
 			}
 
 			// Try each IP until we succeed
-			dialer := &net.Dialer{Timeout: opts.Timeout}
 			for _, ip := range ips {
-				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), "53"))
+				targetAddr := net.JoinHostPort(ip.String(), "53")
+				var conn net.Conn
+				var err error
+
+				if network == "tcp" || network == "tcp4" || network == "tcp6" {
+					conn, err = opts.DialTCP(ctx, targetAddr)
+				} else if network == "udp" || network == "udp4" || network == "udp6" {
+					udpConn, err := opts.DialUDP(ctx, targetAddr)
+					if err != nil {
+						continue
+					}
+					conn = udpConn
+				} else {
+					// Fallback for other network types
+					dialer := &net.Dialer{Timeout: opts.Timeout}
+					conn, err = dialer.DialContext(ctx, network, targetAddr)
+				}
+
 				if err == nil {
 					return conn, nil
 				}
