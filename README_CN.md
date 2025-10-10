@@ -43,165 +43,7 @@
 make build
 ```
 
-## 使用方法
-
-```none
-./dnsproxy 的使用方法：
-  --bogus-nxdomain=subnet
-        将包含至少一个匹配指定地址和CIDR的IP的响应转换为NXDOMAIN。可以多次指定。
-  --bootstrap/-b
-        DoH和DoT的引导DNS，可以多次指定（默认：使用系统提供的）。
-  --cache
-        如果指定，则启用DNS缓存。
-  --cache-max-ttl=uint32
-        DNS条目的最大TTL值，以秒为单位。
-  --cache-min-ttl=uint32
-        DNS条目的最小TTL值，以秒为单位。上限为3600。人为延长TTL只应谨慎考虑后进行。
-  --cache-optimistic
-        如果指定，则启用乐观DNS缓存。
-  --cache-size=int
-        缓存大小（以字节为单位）。默认：64k。
-  --config-path=path
-        YAML配置文件。config.yaml.dist中的最小工作配置。通过命令行传递的选项将覆盖此文件中的选项。
-  --dns64
-        如果指定，dnsproxy将作为DNS64服务器运行。
-  --dns64-prefix=subnet
-        用于处理DNS64的前缀。如果未指定，dnsproxy使用"众所周知的前缀"64:ff9b::。可以多次指定。
-  --dnscrypt-config=path/-g path
-        DNSCrypt配置文件的路径。您可以使用https://github.com/ameshkov/dnscrypt生成一个。
-  --dnscrypt-port=port/-y port
-        DNSCrypt监听端口。
-  --edns
-        使用EDNS客户端子网扩展。
-  --edns-addr=address
-        发送EDNS客户端地址。
-  --fallback/-f
-        当常规解析器不可用时使用的备用解析器，可以多次指定。您也可以指定包含服务器列表的文件路径。
-  --help/-h
-        打印此帮助消息并退出。
-  --hosts-file-enabled
-        如果指定，则使用hosts文件进行解析。
-  --hosts-files=path
-        hosts文件路径列表，可以多次指定。
-  --http3
-        启用HTTP/3支持。
-  --https-port=port/-s port
-        DNS-over-HTTPS监听端口。
-  --https-server-name=name
-        为HTTPS服务器的响应设置Server头。
-  --https-userinfo=name
-        如果设置，所有DoH查询都需要具有此基本认证信息。
-  --insecure
-        禁用安全TLS证书验证。
-  --ipv6-disabled
-        如果指定，所有AAAA请求都将以NoError RCode和空答案回复。
-  --listen=address/-l address
-        监听地址。
-  --max-go-routines=uint
-        设置go协程的最大数量。零值不会设置最大值。
-  --output=path/-o path
-        日志文件路径。
-  --pending-requests-enabled
-        如果指定，服务器将跟踪重复查询，只将第一个查询发送到上游服务器，将其结果传播给其他查询。禁用它会引入缓存投毒攻击的漏洞。
-  --port=port/-p port
-        监听端口。零值禁用TCP和UDP监听器。
-  --pprof
-        如果存在，在localhost:6060上公开pprof信息。
-  --private-rdns-upstream
-        用于私有地址反向DNS查找的私有DNS上游，可以多次指定。
-  --private-subnets=subnet
-        用于私有地址反向DNS查找的私有子网。
-  --quic-port=port/-q port
-        DNS-over-QUIC监听端口。
-  --ratelimit=int/-r int
-        速率限制（每秒请求数）。
-  --ratelimit-subnet-len-ipv4=int
-        IPv4的速率限制子网长度。
-  --ratelimit-subnet-len-ipv6=int
-        IPv6的速率限制子网长度。
-  --refuse-any
-        如果指定，拒绝ANY请求。
-  --timeout=duration
-        对远程上游服务器的出站DNS查询超时时间，采用人类可读的形式
-  --tls-crt=path/-c path
-        证书链文件的路径。
-  --tls-key=path/-k path
-        私钥文件的路径。
-  --tls-max-version=version
-        最大TLS版本，例如1.3。
-  --tls-min-version=version
-        最小TLS版本，例如1.0。
-  --tls-port=port/-t port
-        DNS-over-TLS监听端口。
-  --udp-buf-size=int
-        设置UDP缓冲区的大小（以字节为单位）。值<=0将使用系统默认值。
-  --upstream/-u
-        要使用的上游（可以多次指定）。您也可以指定包含服务器列表的文件路径。
-  --upstream-mode=mode
-        定义上游逻辑模式，可能的值：load_balance、parallel、fastest_addr（默认：load_balance）。
-  --use-private-rdns
-        如果指定，对私有地址的反向DNS查找使用私有上游。
-  --verbose/-v
-        详细输出。
-  --version
-        打印程序版本。
-```
-
 ## 示例
-
-### EDNS 客户端子网
-
-要启用 EDNS 客户端子网扩展支持，您应该使用`--edns`标志运行 dnsproxy：
-
-```shell
-./dnsproxy -u 8.8.8.8:53 --edns
-```
-
-现在，如果您从互联网连接到代理 - 它将把您原始 IP 地址的前缀传递给上游服务器。这样，上游服务器可能会响应位于您附近的服务器的 IP 地址，以最小化延迟。
-
-如果您想在从本地网络连接到代理时使用 EDNS CS 功能，您需要设置`--edns-addr=PUBLIC_IP`参数：
-
-```shell
-./dnsproxy -u 8.8.8.8:53 --edns --edns-addr=72.72.72.72
-```
-
-现在，即使您的 IP 地址是 192.168.0.1 且不是公共 IP，代理也会将 72.72.72.72 传递给上游服务器。
-
-### 虚假 NXDomain
-
-此选项类似于 dnsmasq 的`bogus-nxdomain`。`dnsproxy`将把包含至少一个也由该选项指定的 IP 地址的响应转换为`NXDOMAIN`。可以多次指定。
-
-在下面的例子中，我们使用 AdGuard DNS 服务器，它对被阻止的域名返回`0.0.0.0`，并将它们转换为`NXDOMAIN`。
-
-```shell
-./dnsproxy -u 94.140.14.14:53 --bogus-nxdomain=0.0.0.0
-```
-
-也支持 CIDR 范围。以下将用`NXDOMAIN`响应，而不是包含来自`192.168.0.0`-`192.168.255.255`的任何 IP 的响应：
-
-```shell
-./dnsproxy -u 192.168.0.15:53 --bogus-nxdomain=192.168.0.0/16
-```
-
-### DoH 基本认证
-
-通过设置`--https-userinfo`选项，您可以使用`dnsproxy`作为具有基本认证要求的 DoH 代理。
-
-例如：
-
-```shell
-./dnsproxy \
-    --https-port='443' \
-    --https-userinfo='user:p4ssw0rd' \
-    --tls-crt='…/my.crt' \
-    --tls-key='…/my.key' \
-    -u '94.140.14.14:53' \
-    ;
-```
-
-此配置将只允许包含用户`user`和密码`p4ssw0rd`的 BasicAuth 凭据的`Authorization`头的 DoH 查询。
-
-如果您还想禁用普通 DNS 处理并让`dnsproxy`只提供带有基本认证检查的 DoH，请添加`-p 0`。
 
 ## 错误修复和重构总结 (2024)
 
@@ -213,11 +55,13 @@ make build
 ### 🔧 主要成就
 
 1. **✅ 实现了统一的 UpstreamOptions 接口**
+
    - 提供了统一的 TCP/UDP 连接管理接口
    - 支持所有 DNS 协议（DoT, DoH, DoQ, DNSCrypt, Plain DNS）
    - 改善了代码的可维护性和可扩展性
 
 2. **✅ 修复了所有编译错误**
+
    - 解决了测试文件中的语法错误
    - 修复了字段访问不一致问题
    - 解决了循环导入依赖问题
@@ -244,7 +88,7 @@ make build
 #### 3. 字段与方法名冲突
 
 - **错误**: Go 不允许字段和方法同名
-- **修复**: 移除重复的方法实现，保留接口要求的 Get* 方法
+- **修复**: 移除重复的方法实现，保留接口要求的 Get\* 方法
 - **影响文件**: `upstream/upstream.go`
 
 #### 4. 实现文件字段访问
@@ -361,7 +205,7 @@ go test -v ./...
 
 ---
 
-## 📋 2024年错误修复和重构工作总结
+## 📋 2024 年错误修复和重构工作总结
 
 ### 🎯 任务概述
 
@@ -370,6 +214,7 @@ go test -v ./...
 ### 🚀 主要成就
 
 #### 1. 完全解决了编译错误
+
 - ✅ 修复了 `undefined: bootstrap.ParallelResolver` 错误
 - ✅ 解决了 `unknown field Logger in struct literal of type Options` 及类似字段访问错误
 - ✅ 修复了字段与方法名冲突问题
@@ -377,6 +222,7 @@ go test -v ./...
 - ✅ 修复了空解析器处理和错误格式问题
 
 #### 2. 实现了重要的架构改进
+
 - ✅ 成功实现了 `UpstreamOptions` 统一接口
 - ✅ 解决了 `upstream` 和 `bootstrap` 包之间的循环导入问题
 - ✅ 创建了 `internal/types` 共享类型包

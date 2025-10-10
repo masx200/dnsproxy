@@ -140,61 +140,6 @@ make build
 make test
 ```
 
-**运行 lint：**
-
-```bash
-make go-lint
-```
-
-**完整检查（lint + test）：**
-
-```bash
-make go-check
-```
-
-**跨平台 vet 检查：**
-
-```bash
-make go-os-check
-```
-
-**清理构建产物：**
-
-```bash
-make clean
-```
-
-**开发工具安装：**
-
-```bash
-make go-tools
-```
-
-### 关键 Makefile 目标
-
-- `make build` - 构建 dnsproxy 二进制文件
-- `make test` - 运行覆盖率测试
-- `make go-lint` - 运行所有 linter
-- `make go-check` - 运行 linting 和测试
-- `make go-tools` - 安装所需的开发工具
-- `make clean` - 清理构建产物
-
-## 开发命令
-
-### 构建和测试
-
-**构建项目：**
-
-```bash
-make build
-```
-
-**运行测试：**
-
-```bash
-make test
-```
-
 **运行代码检查：**
 
 ```bash
