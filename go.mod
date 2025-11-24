@@ -2,6 +2,14 @@ module github.com/masx200/dnsproxy
 
 go 1.25.2
 
+replace github.com/quic-go/qpack => github.com/quic-go/qpack v0.5.1
+
+replace github.com/masx200/doq-go => github.com/masx200/doq-go v0.55.0
+
+replace github.com/quic-go/quic-go/logging => github.com/quic-go/quic-go/logging v0.55.0
+
+replace github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.55.0
+
 require (
 	github.com/AdguardTeam/golibs v0.35.0
 	github.com/ameshkov/dnscrypt/v2 v2.4.0
@@ -12,11 +20,11 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	// TODO(s.chzhen):  Update after investigation of the 0-RTT bug/behavior
 	// when TestUpstreamDoH_serverRestart/http3/second_try keeps failing.
-	github.com/quic-go/quic-go v0.54.1
+	github.com/quic-go/quic-go v0.57.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/net v0.45.0
-	golang.org/x/sys v0.37.0
+	golang.org/x/net v0.47.0
+	golang.org/x/sys v0.38.0
 	gonum.org/v1/gonum v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -46,7 +54,7 @@ require (
 	github.com/jstemmer/go-junit-report/v2 v2.1.0 // indirect
 	github.com/kisielk/errcheck v1.9.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/quic-go/qpack v0.5.1 // indirect
+	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/securego/gosec/v2 v2.22.9 // indirect
@@ -61,15 +69,14 @@ require (
 	go.opentelemetry.io/otel v1.38.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
-	go.uber.org/mock v0.5.2 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20251002181428-27f1f14c8bb9 // indirect
-	golang.org/x/mod v0.28.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/telemetry v0.0.0-20251001141935-4eae98a72453 // indirect
-	golang.org/x/term v0.35.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
-	golang.org/x/tools v0.37.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/telemetry v0.0.0-20251008203120-078029d740a8 // indirect
+	golang.org/x/term v0.37.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
 	golang.org/x/vuln v1.1.4 // indirect
 	google.golang.org/genai v1.28.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251007200510-49b9836ed3ff // indirect

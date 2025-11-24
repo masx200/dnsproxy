@@ -24,7 +24,7 @@ import (
 	"github.com/masx200/dnsproxy/internal/types"
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/logging"
+	logging "github.com/quic-go/quic-go/logging"
 )
 
 // DialHandler is a function type for dialing connections
