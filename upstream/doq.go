@@ -330,51 +330,59 @@ func (p *dnsOverQUIC) openStream(conn *quic.Conn) (*quic.Stream, error) {
 
 // openConnection dials a new QUIC connection.
 func (p *dnsOverQUIC) openConnection() (conn *quic.Conn, err error) {
-	dialContext, err := p.getDialer()
+	// Extract hostname from the URL
+	host := p.addr.Hostname()
+	port := p.addr.Port()
+	if port == "" {
+		port = "853" // default DoQ port
+	}
+
+	// First, use DNS resolver to resolve the hostname to IP addresses
+	ips, err := p.opts.LookupIP(host)
 	if err != nil {
-		return nil, fmt.Errorf("bootstrapping %s: %w", p.addr, err)
+		return nil, fmt.Errorf("resolving %s: %w", host, err)
 	}
 
-	// First, use the bootstrap dialer to get the address
-	// it does not create an actual connection, but it helps us determine
-	// what IP is actually reachable (when there're v4/v6 addresses).
-	rawConn, err := dialContext(context.Background(), "udp", "")
-	if err != nil {
-		return nil, fmt.Errorf("dialing raw connection to %s: %w", p.addr, err)
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no IP addresses found for %s", host)
 	}
 
-	// It's never actually used.
-	err = rawConn.Close()
-	if err != nil {
-		p.logger.Debug("closing raw connection", "addr", p.addr, slogutil.KeyError, err)
+	// Try each IP address until we successfully connect
+	var lastErr error
+	for _, ip := range ips {
+		// Create the target address with port
+		targetAddr := net.JoinHostPort(ip.String(), port)
+
+		// Create a UDP connection to this IP address
+		udpConn, err := p.opts.DialUDP(context.Background(), targetAddr)
+		if err != nil {
+			lastErr = err
+			p.logger.Debug("failed to connect to IP", "ip", ip.String(), "port", port, slogutil.KeyError, err)
+			continue
+		}
+		defer udpConn.Close()
+
+		// Get the remote address from the UDP connection
+		addr := udpConn.RemoteAddr().String()
+
+		// Now try to establish QUIC connection using DialAddrEarly
+		ctx, cancel := p.withDeadline(context.Background())
+		defer cancel()
+
+		conn, err = quic.DialAddrEarly(ctx, addr, p.tlsConf.Clone(), p.getQUICConfig())
+		if err != nil {
+			lastErr = err
+			p.logger.Debug("failed to establish QUIC connection to IP", "ip", ip.String(), "port", port, slogutil.KeyError, err)
+			continue
+		}
+
+		// Successfully connected
+		p.logger.Debug("successfully connected to QUIC server", "ip", ip.String(), "port", port)
+		return conn, nil
 	}
 
-	udpConn, ok := rawConn.(*net.UDPConn)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T of connection; should be %T", rawConn, udpConn)
-	}
-
-	addr := udpConn.RemoteAddr().String()
-
-	// Now use UpstreamOptions.DialUDP for the actual UDP connection
-	udpConn2, err := p.opts.DialUDP(context.Background(), addr)
-	if err != nil {
-		return nil, fmt.Errorf("dialing udp connection to %s: %w", p.addr, err)
-	}
-	defer udpConn2.Close()
-
-	// Get the remote address from the UDP connection created by UpstreamOptions
-	addr = udpConn2.RemoteAddr().String()
-
-	ctx, cancel := p.withDeadline(context.Background())
-	defer cancel()
-
-	conn, err = quic.DialAddrEarly(ctx, addr, p.tlsConf.Clone(), p.getQUICConfig())
-	if err != nil {
-		return nil, fmt.Errorf("dialing quic connection to %s: %w", p.addr, err)
-	}
-
-	return conn, nil
+	// If we get here, all connection attempts failed
+	return nil, fmt.Errorf("failed to connect to any IP address for %s: %w", host, lastErr)
 }
 
 // closeConnWithError closes the active connection with error to make sure that

@@ -80,6 +80,10 @@ type UpstreamOptions interface {
 	// configuration from this UpstreamOptions.
 	DialUDP(ctx context.Context, addr string) (*net.UDPConn, error)
 
+	// LookupIP resolves a hostname to IP addresses using the bootstrap resolver.
+	// This method has the same interface as net.LookupIP.
+	LookupIP(host string) ([]net.IP, error)
+
 	// Setter methods for mutable fields
 	SetLogger(logger *slog.Logger)
 	SetBootstrap(bootstrap Resolver)
@@ -207,6 +211,29 @@ func (o *Options) SetLogger(logger *slog.Logger) {
 // SetBootstrap implements UpstreamOptions.
 func (o *Options) SetBootstrap(bootstrap Resolver) {
 	o.Bootstrap = bootstrap
+}
+
+// LookupIP implements UpstreamOptions.
+func (o *Options) LookupIP(host string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), o.Timeout)
+	defer cancel()
+
+	if o.Bootstrap != nil {
+		ips, err := o.Bootstrap.LookupNetIP(ctx, "ip", host)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert netip.Addr to net.IP
+		netIPs := make([]net.IP, len(ips))
+		for i, ip := range ips {
+			netIPs[i] = net.IP(ip.AsSlice())
+		}
+		return netIPs, nil
+	}
+
+	// Fallback to default resolver
+	return net.DefaultResolver.LookupIP(ctx, "ip", host)
 }
 
 func init() {
